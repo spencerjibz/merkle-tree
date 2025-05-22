@@ -1,4 +1,4 @@
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 use sha2::Digest;
 use std::collections::HashMap;
 pub type Data = Vec<u8>;

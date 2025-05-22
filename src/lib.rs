@@ -109,10 +109,10 @@ impl MerkleTree {
         let level_count = get_level_count(input.len());
         let mut tree_cache = HashMap::new();
         let mut nodes: Vec<(PathTrace, Hash)> = input
-            .iter()
+            .into_iter()
             .enumerate()
             .map(|(index, data)| {
-                let data = hash_data(data);
+                let data = hash_data(&data);
                 let direction = HashDirection::from_index(index);
                 let path = PathTrace::new(direction, level_count, index);
 
@@ -120,29 +120,33 @@ impl MerkleTree {
             })
             .collect();
         while nodes.len() > 1 {
-            //  reduce allocations as length of nodes to process halves at every level up.
-            let mut next_level = Vec::with_capacity(nodes.len() / 2);
-            let mut cursor = nodes.into_iter();
             let mut items_index_per_level: HashMap<usize, usize> = HashMap::new();
-            while let Some((left, hash)) = cursor.next() {
-                let (right, right_hash) = cursor.next().unwrap_or_else(|| (left, hash.clone()));
-
-                let level = left.level - 1;
-                let parent_index = items_index_per_level.entry(level).or_default();
-                let mut direction = HashDirection::from_index(*parent_index);
-                // when we get the root node
-                if level == 0 {
-                    direction = HashDirection::Center;
-                }
-                let parent_hash = hash_concat(&hash, &right_hash);
-                let parent = PathTrace::new(direction, level, *parent_index);
-                tree_cache.insert(left, hash);
-                tree_cache.insert(right, right_hash);
-                tree_cache.insert(parent, parent_hash.clone());
-                *parent_index += 1;
-                next_level.push((parent, parent_hash));
-            }
-            nodes = next_level;
+            nodes = nodes
+                .chunks_exact(2)
+                .cycle()
+                .take((nodes.len() + 1) / 2)
+                .map(|chunk| {
+                    match chunk {
+                        [(left, hash), (right, right_hash)] => {
+                            let level = left.level - 1;
+                            let parent_index = items_index_per_level.entry(level).or_default();
+                            let mut direction = HashDirection::from_index(*parent_index);
+                            // when we get the root node
+                            if level == 0 {
+                                direction = HashDirection::Center;
+                            }
+                            let parent_hash = hash_concat(&hash, &right_hash);
+                            let parent = PathTrace::new(direction, level, *parent_index);
+                            tree_cache.insert(*left, hash.clone());
+                            tree_cache.insert(*right, right_hash.clone());
+                            tree_cache.insert(parent, parent_hash.clone());
+                            *parent_index += 1;
+                            (parent, parent_hash)
+                        }
+                        _ => unreachable!(), // we never get here, because
+                    }
+                })
+                .collect();
         }
         let (_root_path, root) = nodes.pop().unwrap();
         Self { root, tree_cache }
