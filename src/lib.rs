@@ -119,7 +119,7 @@ impl MerkleTree {
                 (path, data)
             })
             .collect();
-        while nodes.len() > 1  {
+        while nodes.len() > 1 {
             //  reduce allocations as length of nodes to process halves at every level up.
             let mut next_level = Vec::with_capacity(nodes.len() / 2);
             let mut cursor = nodes.into_iter();
@@ -138,7 +138,7 @@ impl MerkleTree {
                 let parent = PathTrace::new(direction, level, *parent_index);
                 tree_cache.insert(left, hash);
                 tree_cache.insert(right, right_hash);
-                tree_cache.insert(parent, parent_hash.to_vec());
+                tree_cache.insert(parent, parent_hash.clone());
                 *parent_index += 1;
                 next_level.push((parent, parent_hash));
             }
@@ -187,7 +187,7 @@ impl MerkleTree {
     }
 
     /// Verifies that the given input data produces the given root hash
-    pub fn verify(input: &[Data], root_hash: &Hash) -> bool {
+    pub fn verify(input: &[Data], root_hash: &Data) -> bool {
         let generated_tree = Self::construct(input);
         generated_tree.root() == root_hash
     }
@@ -205,7 +205,7 @@ impl MerkleTree {
                 }
                 hash_concat(&acc, next_hash)
             });
-        &generated == root_hash
+        generated == root_hash
     }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
