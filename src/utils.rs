@@ -1,7 +1,8 @@
+use bytes::{Buf, Bytes};
 use sha2::Digest;
 use std::collections::HashMap;
 pub type Data = Vec<u8>;
-pub type Hash = Vec<u8>;
+pub type Hash = Bytes;
 // Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
 // Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
 pub(crate) type TreeCache = HashMap<PathTrace, Hash>;
@@ -121,7 +122,8 @@ impl PartialOrd for PathTrace {
     }
 }
 pub fn hash_data<T: AsRef<[u8]>>(data: &T) -> Hash {
-    sha2::Sha256::digest(data.as_ref()).to_vec()
+    let hash = sha2::Sha256::digest(data.as_ref());
+    Bytes::copy_from_slice(&hash)
 }
 
 pub fn hash_concat<T: AsRef<[u8]>>(h1: &T, h2: &T) -> Hash {
