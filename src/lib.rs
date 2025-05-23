@@ -109,10 +109,10 @@ impl MerkleTree {
         let level_count = get_level_count(input.len());
         let mut tree_cache = HashMap::new();
         let mut nodes: Vec<(PathTrace, Hash)> = input
-            .iter()
+            .into_iter()
             .enumerate()
             .map(|(index, data)| {
-                let data = hash_data(data);
+                let data = hash_data(&data);
                 let direction = HashDirection::from_index(index);
                 let path = PathTrace::new(direction, level_count, index);
 
@@ -123,12 +123,12 @@ impl MerkleTree {
             //  reduce allocations as length of nodes to process halves at every level up.
             let mut next_level = Vec::with_capacity(nodes.len() / 2);
             let mut cursor = nodes.into_iter();
-            let mut items_index_per_level: HashMap<usize, usize> = HashMap::new();
+            let mut items_index_per_level = vec![0; level_count];
             while let Some((left, hash)) = cursor.next() {
                 let (right, right_hash) = cursor.next().unwrap_or_else(|| (left, hash.clone()));
 
                 let level = left.level - 1;
-                let parent_index = items_index_per_level.entry(level).or_default();
+                let parent_index = items_index_per_level.get_mut(level).unwrap();
                 let mut direction = HashDirection::from_index(*parent_index);
                 // when we get the root node
                 if level == 0 {
