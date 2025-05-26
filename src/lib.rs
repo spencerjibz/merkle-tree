@@ -51,7 +51,8 @@ Exercise 3 (Hard):
  */
 pub mod utils;
 use bytes::Bytes;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use indexmap::{IndexMap, IndexSet};
+use std::collections::BTreeMap;
 pub use utils::*;
 /*
 * My previous implementation,
@@ -105,7 +106,7 @@ pub struct MerkleTree<'a> {
     is_padded: bool,
     leaf_count: usize,
     level_count: usize,
-    leaf_data: HashSet<&'a Vec<u8>>,
+    leaf_data: IndexSet<&'a Vec<u8>>, // for faster lookups of leaves by data
     items_index_per_level: Vec<usize>,
     padding_start: usize,
     // for faster lookup , (level, Direction, index), eg. for H2, (depthlength, Right, index)
@@ -120,13 +121,13 @@ impl<'a> MerkleTree<'a> {
 
     /// Constructs a Merkle tree from given input data
     pub fn construct(input: &'a [Data]) -> Self {
-        let leaf_data: HashSet<_> = input.iter().collect();
+        let leaf_data: IndexSet<_> = input.iter().collect();
         let is_padded = !input.len().is_power_of_two();
         let (leaf_count, input) = pad_input(input);
         let level_count = get_level_count(leaf_count);
         let total_tree_nodes = 2 * leaf_count - 1;
         let mut items_index_per_level = vec![0; level_count];
-        let mut tree_cache = HashMap::with_capacity(total_tree_nodes);
+        let mut tree_cache = IndexMap::with_capacity(total_tree_nodes);
         let (_root_path, root) = build_tree(
             &mut tree_cache,
             input,
@@ -136,6 +137,7 @@ impl<'a> MerkleTree<'a> {
             0,
         );
         let padding_start = leaf_data.len() - 1;
+        tree_cache.sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
 
         Self {
             items_index_per_level,
@@ -148,14 +150,14 @@ impl<'a> MerkleTree<'a> {
             tree_cache,
         }
     }
-    /// genrate the parent each level up to root,
+    /// updates the hash up every level to the root,
     pub fn cascade_update(&mut self, current: PathTrace) {
         current.generate_route().for_each(|path| {
             if let (Some(current_node), Some(sibling_node)) = (
                 self.tree_cache.get(&path),
                 self.tree_cache.get(&path.get_sibling_path()),
             ) {
-                // check for direaction
+                // check for direction
                 let next_parent_hash = if path.direction == HashDirection::Left {
                     hash_concat(&current_node.data, &sibling_node.data)
                 } else {
@@ -179,12 +181,17 @@ impl<'a> MerkleTree<'a> {
             return;
         }
         if !self.is_padded {
-            return self.expand_tree(data);
+            self.expand_tree(data);
+            self.tree_cache
+                .sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
+            return;
         }
         // handling cases of adding to un already unbalanced tree with padding;
         self.expand_padded(data);
+        self.tree_cache
+            .sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
     }
-    // expands the tree by the next_power_of_tww;
+    /// expands the tree by the next_power_of_two
     pub fn expand_tree(&mut self, data: &'a Data) {
         // leaf_counts is already a is_power_of_two
         let next_needed_nodes = (self.leaf_count + 1).next_power_of_two() - self.leaf_count;
@@ -192,7 +199,7 @@ impl<'a> MerkleTree<'a> {
         let input = std::iter::repeat(node).take(next_needed_nodes);
         let total_tree_nodes = 2 * next_needed_nodes - 1;
         // move every path up by level up
-        let temp: Vec<_> = self.tree_cache.drain().collect();
+        let temp: Vec<_> = self.tree_cache.drain(..).collect();
         temp.into_iter().for_each(|(mut key, value)| {
             key.level += 1;
             if key.direction == HashDirection::Center {
@@ -300,8 +307,9 @@ impl<'a> MerkleTree<'a> {
 
     pub fn fetch_cache_pathtrace(&self, target_hash: &Hash) -> Option<PathTrace> {
         self.tree_cache
-            .iter()
-            .find_map(|(path, node)| (node.data == target_hash).then_some(*path))
+            .binary_search_by(|_, node| node.data.cmp(target_hash))
+            .ok()
+            .map(|index| self.tree_cache.get_index(index).map(|(key, _)| *key))?
     }
 
     pub fn print_data_route(&self, data: &Data) {
@@ -321,6 +329,14 @@ impl<'a> MerkleTree<'a> {
     }
 
     pub fn find_data_route(&self, data: &Data) -> Vec<PathTrace> {
+        // faster path, fetch the path from leaf_set;
+        if let Some(trace) = self
+            .leaf_data
+            .get_index_of(data)
+            .map(|index| PathTrace::new(HashDirection::from_index(index), self.level_count, index))
+        {
+            return trace.generate_route().collect();
+        }
         let target_hash = hash_data(data);
         if let Some(cached_path) = self.fetch_cache_pathtrace(&target_hash) {
             return cached_path.generate_route().collect();
@@ -352,6 +368,8 @@ impl<'a> MerkleTree<'a> {
     /// appends multiple leaves to our tree
     pub fn append_multiple(&mut self, input: &'a [Data]) {
         input.iter().for_each(|data| self.append(data));
+        self.tree_cache
+            .sort_unstable_by(|_, h1, _, h2| h1.data.cmp(&h2.data));
     }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
@@ -420,7 +438,7 @@ impl<'a> MerkleTree<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+mod merkle_tree {
     use super::*;
 
     #[test]

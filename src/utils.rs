@@ -1,11 +1,11 @@
 use bytes::Bytes;
+use indexmap::IndexMap;
 use sha2::Digest;
-use std::collections::HashMap;
 pub type Data = Vec<u8>;
 pub type Hash = Bytes;
 // Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
 // Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
-pub(crate) type TreeCache = HashMap<PathTrace, Node>;
+pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
 
 /// Which side to put Hash on when concatinating proof hashes
 #[repr(u8)]
@@ -230,7 +230,7 @@ fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) ->
     nodes.saturating_sub(1)
 }
 #[cfg(test)]
-mod tests {
+mod path_trace {
     use super::*;
 
     #[test]
