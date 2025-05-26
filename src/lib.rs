@@ -50,6 +50,7 @@ Exercise 3 (Hard):
 
  */
 pub mod utils;
+use bytes::Bytes;
 use std::collections::{BTreeMap, HashMap, HashSet};
 pub use utils::*;
 /*
@@ -106,6 +107,7 @@ pub struct MerkleTree<'a> {
     level_count: usize,
     leaf_data: HashSet<&'a Vec<u8>>,
     items_index_per_level: Vec<usize>,
+    padding_start: usize,
     // for faster lookup , (level, Direction, index), eg. for H2, (depthlength, Right, index)
     pub tree_cache: TreeCache, // O(1) - path look ups, O(n) search by hash
 }
@@ -118,7 +120,7 @@ impl<'a> MerkleTree<'a> {
 
     /// Constructs a Merkle tree from given input data
     pub fn construct(input: &'a [Data]) -> Self {
-        let leaf_data = input.iter().collect();
+        let leaf_data: HashSet<_> = input.iter().collect();
         let is_padded = !input.len().is_power_of_two();
         let (leaf_count, input) = pad_input(input);
         let level_count = get_level_count(leaf_count);
@@ -133,9 +135,11 @@ impl<'a> MerkleTree<'a> {
             false,
             0,
         );
+        let padding_start = leaf_data.len() - 1;
 
         Self {
             items_index_per_level,
+            padding_start,
             root: root.data,
             leaf_data,
             is_padded,
@@ -144,14 +148,41 @@ impl<'a> MerkleTree<'a> {
             tree_cache,
         }
     }
+    /// genrate the parent each level up to root,
+    pub fn cascade_update(&mut self, current: PathTrace) {
+        current.generate_route().for_each(|path| {
+            if let (Some(current_node), Some(sibling_node)) = (
+                self.tree_cache.get(&path),
+                self.tree_cache.get(&path.get_sibling_path()),
+            ) {
+                // check for direaction
+                let next_parent_hash = if path.direction == HashDirection::Left {
+                    hash_concat(&current_node.data, &sibling_node.data)
+                } else {
+                    hash_concat(&sibling_node.data, &current_node.data)
+                };
+                if let Some(parent_node) = path
+                    .get_parent_path()
+                    .and_then(|parent_path| self.tree_cache.get_mut(&parent_path))
+                {
+                    parent_node.data = next_parent_hash;
+                }
+            }
+        });
+        // update self. root;
+        if let Some(new_root) = self.tree_cache.get(&PathTrace::root()) {
+            self.root = Bytes::copy_from_slice(&new_root.data);
+        }
+    }
     pub fn append(&mut self, data: &'a Data) {
         if self.leaf_data.contains(data) {
             return;
         }
         if !self.is_padded {
-            self.expand_tree(data);
+            return self.expand_tree(data);
         }
         // handling cases of adding to un already unbalanced tree with padding;
+        self.expand_padded(data);
     }
     // expands the tree by the next_power_of_tww;
     pub fn expand_tree(&mut self, data: &'a Data) {
@@ -166,6 +197,7 @@ impl<'a> MerkleTree<'a> {
             key.level += 1;
             if key.direction == HashDirection::Center {
                 key.direction = HashDirection::Left;
+                key.index = 0;
             }
             self.tree_cache.insert(key, value);
         });
@@ -195,9 +227,69 @@ impl<'a> MerkleTree<'a> {
         };
         self.tree_cache.insert(PathTrace::root(), root);
         self.leaf_data.insert(data);
-        self.is_padded = true
+        self.padding_start = self.leaf_data.len() - 1;
+        self.is_padded = !self.leaf_data.len().is_power_of_two();
     }
+    pub fn expand_padded(&mut self, data: &'a Data) {
+        let padding_start = self.padding_start;
+        // replace the first padded copy with unique pair;
+        let hashed_data = hash_data(&data);
+        let mut first_padded = PathTrace::new(
+            HashDirection::from_index(padding_start),
+            self.level_count,
+            padding_start,
+        );
+        if !self.tree_cache.contains_key(&first_padded) {
+            first_padded.index += 1;
+        }
+        let sibling_path = first_padded.get_sibling_path();
+        // if both the current and sibling are the same; and previous contains current,
+        // this is a complete dupliate pair, we need to replace it;
+        let mut previous = first_padded;
+        previous.index -= 2;
 
+        let any_previous_contain_current_hash = [previous, previous.get_sibling_path()]
+            .iter()
+            .any(|path| self.compare_hashes(&first_padded, path));
+        if self.compare_hashes(&first_padded, &sibling_path) {
+            if let Some(first_padded_node) = self.tree_cache.get_mut(&first_padded) {
+                if any_previous_contain_current_hash {
+                    first_padded_node.data = hashed_data.clone();
+                }
+            }
+        }
+        // replace the sibling of the first padding_hahsh;
+        if let Some(sibling) = self.tree_cache.get_mut(&sibling_path) {
+            sibling.data = hashed_data.clone();
+            self.cascade_update(first_padded);
+        }
+
+        for next_index in (sibling_path.index..self.leaf_count).step_by(2).skip(1) {
+            let next_node = PathTrace::new(HashDirection::Right, sibling_path.level, next_index);
+            if let Some(found_right) = self.tree_cache.get_mut(&next_node) {
+                found_right.data = hashed_data.clone();
+                let left = Node {
+                    data: hashed_data.clone(),
+                    is_left: true,
+                    from_duplicate: true,
+                };
+                self.tree_cache.insert(next_node.get_sibling_path(), left);
+                self.cascade_update(next_node);
+            }
+        }
+        self.leaf_data.insert(data);
+        self.is_padded = !self.leaf_data.len().is_power_of_two();
+
+        self.padding_start = if self.is_padded {
+            std::cmp::min(self.padding_start + 2, self.leaf_data.len())
+        } else {
+            self.leaf_data.len() - 1
+        };
+    }
+    pub fn compare_hashes(&self, left: &PathTrace, right: &PathTrace) -> bool {
+        self.tree_cache.get(left).map(|node| &node.data)
+            == self.tree_cache.get(right).map(|node| &node.data)
+    }
     pub fn get_parent_hash(&self, path_trace: &PathTrace) -> Option<&Hash> {
         // numbers of items of that level is 2^level;
         // our parent is always one level up;
@@ -374,6 +466,35 @@ mod tests {
                     assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
                 }
             });
+    }
+    #[test]
+    fn append_multiple_to_balanced_tree() {
+        let extra = vec![100];
+        (1_usize..100)
+            .filter(|i| i.is_power_of_two())
+            .for_each(|index| {
+                let data = example_data(index);
+                let mut tree = MerkleTree::construct(&data);
+
+                tree.append(&extra);
+                let root_hash = tree.root();
+                if let Some(proof) = tree.prove(&extra) {
+                    assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
+                }
+            });
+    }
+    #[test]
+    fn append_data_to_unbalanced() {
+        let extra = vec![100];
+        (1_usize..100).for_each(|index| {
+            let data = example_data(index);
+            let mut tree = MerkleTree::construct(&data);
+            tree.append(&extra);
+            let root_hash = tree.root();
+            if let Some(proof) = tree.prove(&extra) {
+                assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
+            }
+        });
     }
     #[test]
     fn verifies_data_set_forms_root() {
