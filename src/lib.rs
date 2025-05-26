@@ -349,6 +349,10 @@ impl<'a> MerkleTree<'a> {
             });
         generated == root_hash
     }
+    /// appends multiple leaves to our tree
+    pub fn append_multiple(&mut self, input: &'a [Data]) {
+        input.iter().for_each(|data| self.append(data));
+    }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
     pub fn prove(&self, data: &Data) -> Option<Proof> {
@@ -469,19 +473,35 @@ mod tests {
     }
     #[test]
     fn append_multiple_to_balanced_tree() {
-        let extra = vec![100];
         (1_usize..100)
             .filter(|i| i.is_power_of_two())
             .for_each(|index| {
                 let data = example_data(index);
                 let mut tree = MerkleTree::construct(&data);
-
-                tree.append(&extra);
+                let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
+                tree.append_multiple(&input);
                 let root_hash = tree.root();
-                if let Some(proof) = tree.prove(&extra) {
-                    assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
+                for h in input.iter() {
+                    if let Some(proof) = tree.prove(h) {
+                        assert!(MerkleTree::verify_proof(h, &proof, root_hash))
+                    }
                 }
             });
+    }
+    #[test]
+    fn append_multiple_to_un_balanced_tree() {
+        (1_usize..100).for_each(|index| {
+            let data = example_data(index);
+            let mut tree = MerkleTree::construct(&data);
+            let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
+            tree.append_multiple(&input);
+            let root_hash = tree.root();
+            for h in input.iter() {
+                if let Some(proof) = tree.prove(h) {
+                    assert!(MerkleTree::verify_proof(h, &proof, root_hash))
+                }
+            }
+        });
     }
     #[test]
     fn append_data_to_unbalanced() {
