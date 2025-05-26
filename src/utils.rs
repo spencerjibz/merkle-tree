@@ -205,6 +205,7 @@ pub fn build_tree(
             // when rebuild, move increase the level-count
             if level == 1 && is_rebuild {
                 direction = HashDirection::Right;
+                *parent_index = 1;
             }
 
             let parent_node = Node {
