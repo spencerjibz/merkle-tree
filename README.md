@@ -1,4 +1,5 @@
-### Merkle Tree
+### Merkle Tree 
+[![CI](https://github.com/spencerjibz/merkle-tree/actions/workflows/ci.yaml/badge.svg)](https://github.com/spencerjibz/merkle-tree/actions/workflows/ci.yaml)
 A minimal and extensible Merkle Tree implementation in Rust.
 ### Features
 - Supports both full and sparse Merkle Trees  
