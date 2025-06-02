@@ -147,7 +147,7 @@ impl<'a> MerkleTree<'a> {
             tree_cache,
         }
     }
-   /// update the target_hash with a new one.
+    /// update the target_hash with a new one.
     pub fn update(&mut self, target_hash: &Hash, new: Hash) {
         if let Some(current) = self.fetch_cache_pathtrace(target_hash) {
             if let Some(target_node) = self.tree_cache.get_mut(&current) {
@@ -203,7 +203,7 @@ impl<'a> MerkleTree<'a> {
         // leaf_counts is already a is_power_of_two
         let next_needed_nodes = (self.leaf_count + 1).next_power_of_two() - self.leaf_count;
         let node = Node::new(data, true);
-        let input = std::iter::repeat(node).take(next_needed_nodes);
+        let input = std::iter::repeat_n(node, next_needed_nodes);
         let total_tree_nodes = 2 * next_needed_nodes - 1;
         // move every path up by level up
         let temp: Vec<_> = self.tree_cache.drain(..).collect();
