@@ -16,6 +16,16 @@ bytes = "1.10.1"
 hex = "0.4.3"
 indexmap = "2.9.0"
 sha2 = "0.10.1"
-
 [profile.release]
 debug = 1
+
+[dev-dependencies]
+criterion = "0.6.0"
+rand = "0.9.1"
+merkle = '1.11.0'
+ring = "0.16.15"
+
+[[bench]]
+name = 'generic'
+harness = false
+
