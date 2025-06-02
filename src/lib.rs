@@ -147,7 +147,7 @@ impl<'a> MerkleTree<'a> {
             tree_cache,
         }
     }
-
+   /// update the target_hash with a new one.
     pub fn update(&mut self, target_hash: &Hash, new: Hash) {
         if let Some(current) = self.fetch_cache_pathtrace(target_hash) {
             if let Some(target_node) = self.tree_cache.get_mut(&current) {
@@ -157,7 +157,7 @@ impl<'a> MerkleTree<'a> {
         }
     }
 
-    /// updates the hash up every level to the root,
+    /// updates the hash up every level to the root.
     pub fn cascade_update(&mut self, current: PathTrace) {
         current.generate_route().for_each(|path| {
             if let (Some(current_node), Some(sibling_node)) = (
