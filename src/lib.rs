@@ -95,16 +95,13 @@ fn pad_input(input: &[Data]) -> (usize, impl Iterator<Item = Node> + use<'_>) {
     let last = input.last().unwrap();
     let mut last = Node::new(last, true);
     last.from_duplicate = true;
-    (
-        length,
-        padded.chain(std::iter::repeat(last).take(fill_count)),
-    )
+    (length, padded.chain(std::iter::repeat_n(last, fill_count)))
 }
 #[derive(Debug)]
 pub struct MerkleTree<'a> {
     root: Hash,
     is_padded: bool,
-    leaf_count: usize,
+    pub leaf_count: usize,
     level_count: usize,
     leaf_data: IndexSet<&'a Vec<u8>>, // for faster lookups of leaves by data
     items_index_per_level: Vec<usize>,
@@ -150,6 +147,16 @@ impl<'a> MerkleTree<'a> {
             tree_cache,
         }
     }
+
+    pub fn update(&mut self, target_hash: &Hash, new: Hash) {
+        if let Some(current) = self.fetch_cache_pathtrace(target_hash) {
+            if let Some(target_node) = self.tree_cache.get_mut(&current) {
+                target_node.data = new;
+                self.cascade_update(current);
+            }
+        }
+    }
+
     /// updates the hash up every level to the root,
     pub fn cascade_update(&mut self, current: PathTrace) {
         current.generate_route().for_each(|path| {
@@ -327,6 +334,10 @@ impl<'a> MerkleTree<'a> {
             );
         });
     }
+    /// generate proof for multiple sets of data
+    pub fn proof_multiple(&self, input: &[Data]) -> Vec<Proof> {
+        input.iter().flat_map(|data| self.prove(data)).collect()
+    }
 
     pub fn find_data_route(&self, data: &Data) -> Vec<PathTrace> {
         // faster path, fetch the path from leaf_set;
@@ -467,10 +478,9 @@ mod merkle_tree {
             let data = example_data(index);
             let tree = MerkleTree::construct(&data);
             let root_hash = tree.root();
-            for h1 in data.iter() {
-                if let Some(proof) = tree.prove(h1) {
-                    assert!(MerkleTree::verify_proof(h1, &proof, root_hash))
-                }
+
+            for (h1, proof) in data.iter().zip(tree.proof_multiple(&data)) {
+                assert!(MerkleTree::verify_proof(h1, &proof, root_hash))
             }
         });
     }
@@ -554,6 +564,28 @@ mod merkle_tree {
             let root_hash = hex::decode(hash).unwrap();
             let data = example_data(input);
             assert!(MerkleTree::verify(&data, &root_hash))
+        }
+    }
+    #[test]
+    fn update_works() {
+        let data = example_data(4);
+        let mut tree = MerkleTree::construct(&data);
+        // update the first node at index 0, left to a 5;
+        let update = vec![5];
+        tree.pretty_print();
+        tree.update(&hash_data(&vec![0]), hash_data(&update));
+        tree.pretty_print();
+        assert_eq!(
+            tree.tree_cache
+                .get(&PathTrace::new(HashDirection::Left, 2, 0))
+                .unwrap()
+                .data,
+            hash_data(&update)
+        );
+        // generate prove for update data used;
+        let root_hash = tree.root();
+        if let Some(proof) = tree.prove(&update) {
+            assert!(MerkleTree::verify_proof(&update, &proof, root_hash));
         }
     }
 }
