@@ -54,49 +54,7 @@ use bytes::Bytes;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::BTreeMap;
 pub use utils::*;
-/*
-* My previous implementation,
-#[derive(Debug, Default, Clone)]
-struct MerkleNode {
-    hash: Hash,
-    left: Option<Box<MerkleNode>>,
-    right: Option<Box<MerkleNode>>,
-    level: usize,
-    is_leaf: bool,
-    index: usize,
-}
-impl MerkleNode {
-    pub fn new(hash: Hash, level: usize) -> Self {
-        Self {
-            hash,
-            level,
-            ..Default::default()
-        }
-    }
-    pub fn boxed(self) -> Box<Self> {
-        Box::new(self)
-    }
-}
-*/
-/// add padding to support unbalanced trees
-/// we resize to the nearest power of 2 and pad the last element
-fn pad_input(input: &[Data]) -> (usize, impl Iterator<Item = Node> + use<'_>) {
-    assert!(!input.is_empty(), "can't support empty inputs");
-    let padded = input.iter().map(|data| Node::new(data, true));
-    let (_, length) = padded.size_hint();
-    let mut length = length.unwrap_or(input.len());
 
-    let fill_count = if !length.is_power_of_two() {
-        length.next_power_of_two() - length
-    } else {
-        0
-    };
-    length += fill_count;
-    let last = input.last().unwrap();
-    let mut last = Node::new(last, true);
-    last.from_duplicate = true;
-    (length, padded.chain(std::iter::repeat_n(last, fill_count)))
-}
 #[derive(Debug)]
 pub struct MerkleTree<'a> {
     root: Hash,
