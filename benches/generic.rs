@@ -10,7 +10,8 @@ use ring::digest::{Algorithm, SHA512};
 
 static DIGEST: &Algorithm = &SHA512;
 use merkle_tree::MerkleTree as OurTree;
-const BIG_TREE_INPUT_SIZE: usize = 300;
+/// 2^23,
+const BIG_TREE_INPUT_SIZE: usize = 2_usize.pow(10);
 
 fn bench_small_str_tree(c: &mut Criterion) {
     let mut group = c.benchmark_group("Build small_str_tree");
