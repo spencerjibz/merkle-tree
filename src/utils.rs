@@ -137,6 +137,7 @@ impl PartialOrd for PathTrace {
         Some(self.cmp(other))
     }
 }
+// ------------------------- UTILITY FUNCTIONS --------------------------------------------------
 pub fn hash_data<T: AsRef<[u8]>>(data: &T) -> Hash {
     let hash = sha2::Sha256::digest(data.as_ref());
     Bytes::copy_from_slice(&hash)
@@ -228,6 +229,25 @@ fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) ->
     let shift = depth - 1 - level;
     let nodes = (leaf_count + (1 << shift) - 1) >> shift; // ceil division
     nodes.saturating_sub(1)
+}
+/// add padding to support unbalanced trees
+/// we resize to the nearest power of 2 and pad the last element
+pub fn pad_input(input: &[Data]) -> (usize, impl Iterator<Item = Node> + use<'_>) {
+    assert!(!input.is_empty(), "can't support empty inputs");
+    let padded = input.iter().map(|data| Node::new(data, true));
+    let (_, length) = padded.size_hint();
+    let mut length = length.unwrap_or(input.len());
+
+    let fill_count = if !length.is_power_of_two() {
+        length.next_power_of_two() - length
+    } else {
+        0
+    };
+    length += fill_count;
+    let last = input.last().unwrap();
+    let mut last = Node::new(last, true);
+    last.from_duplicate = true;
+    (length, padded.chain(std::iter::repeat_n(last, fill_count)))
 }
 #[cfg(test)]
 mod path_trace {
