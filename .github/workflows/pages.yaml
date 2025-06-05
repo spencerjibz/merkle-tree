@@ -1,12 +1,11 @@
+
 # Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -15,8 +14,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -24,31 +21,23 @@ concurrency:
 jobs:
   # Job for running cargo bench and deploying benchmark results to a separate page
   benchmark:
-    # This job will run on the latest Ubuntu environment
     runs-on: ubuntu-latest
-    # Define a separate environment for benchmarks.
-    # The 'url' will be the URL of the deployed benchmark page.
     environment:
       name: benchmarks
       url: ${{ steps.deploy_benchmarks.outputs.page_url }}
     steps:
       - name: Checkout repository for benchmarks
         uses: actions/checkout@v4
-        # Configure Git for the fetch depth needed by dtolnay/rust-toolchain
         with:
-          fetch-depth: 0 # Required for cargo bench to potentially link to previous results
+          fetch-depth: 0
 
       - name: Setup Rust toolchain
-        # Use a specific version or 'stable' for consistency
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Add the `nightly` toolchain if your benchmarks require it (e.g., for unstable features)
-          # toolchain: nightly
-          # You might need to install 'rustfmt' and 'clippy' for other checks, but not strictly for benches.
-          # components: rustfmt, clippy
+            toolchain: stable
+            
 
       - name: Cache Cargo dependencies
-        # This step caches Rust dependencies and build artifacts
         uses: actions/cache@v4
         with:
           path: |
@@ -59,45 +48,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run Cargo Bench (with increased memory limits)
-        # Execute the benchmark command.
-        # By default, Criterion.rs outputs HTML reports to target/criterion/
-        # Using ulimit to increase the virtual memory limit for the process
+      - name: Run Cargo Bench
         run: |
-          ulimit -v unlimited || true # Set virtual memory limit to unlimited
-          ulimit -d unlimited || true # Set data segment size limit to unlimited
           cargo bench
 
-      - name: Create Root Index HTML for Redirect
-        # This step creates an index.html at the root of the uploaded artifact
-        # that redirects to the actual Criterion.rs report's index.html.
-        run: |
-          echo '<!DOCTYPE html>' > target/criterion/index.html
-          echo '<html lang="en">' >> target/criterion/index.html
-          echo '<head>' >> target/criterion/index.html
-          echo '  <meta charset="UTF-8">' >> target/criterion/index.html
-          echo '  <meta http-equiv="refresh" content="0; url=./report/index.html">' >> target/criterion/index.html
-          echo '  <title>Redirecting to Benchmarks Report</title>' >> target/criterion/index.html
-          echo '</head>' >> target/criterion/index.html
-          echo '<body>' >> target/criterion/index.html
-          echo '  <p>If you are not redirected automatically, follow this <a href="./report/index.html">link to the benchmarks report</a>.</p>' >> target/criterion/index.html
-          echo '</body>' >> target/criterion/index.html
-          echo '</html>' >> target/criterion/index.html
-
       - name: Setup Pages for Benchmarks
-        # Configure GitHub Pages specifically for the 'benchmarks' environment
         uses: actions/configure-pages@v5
         with:
           enablement: benchmarks
 
       - name: Upload Benchmark Artifact
-        # Upload the entire target/criterion directory to preserve relative paths
+        # Upload the directory containing the benchmark reports (usually target/criterion)
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/criterion
+          path: target/criterion/report
 
       - name: Deploy Benchmarks to GitHub Pages
-        # Deploy the uploaded artifact to the GitHub Pages site for benchmarks
         id: deploy_benchmarks
         uses: actions/deploy-pages@v4
         with:
