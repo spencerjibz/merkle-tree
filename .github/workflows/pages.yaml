@@ -61,7 +61,7 @@ jobs:
         # Upload the directory containing the benchmark reports (usually target/criterion)
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/criterion
+          path: target/criterion/report
 
       - name: Deploy Benchmarks to GitHub Pages
         id: deploy_benchmarks
