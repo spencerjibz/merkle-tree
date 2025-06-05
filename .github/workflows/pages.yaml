@@ -42,10 +42,8 @@ jobs:
         # Use a specific version or 'stable' for consistency
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Add the `nightly` toolchain if your benchmarks require it (e.g., for unstable features)
-          # toolchain: nightly
-          # You might need to install 'rustfmt' and 'clippy' for other checks, but not strictly for benches.
-          # components: rustfmt, clippy
+           toolchain: nightly
+  
 
       - name: Cache Cargo dependencies
         # This step caches Rust dependencies and build artifacts
