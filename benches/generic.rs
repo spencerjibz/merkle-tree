@@ -2,11 +2,11 @@
 extern crate criterion;
 
 use criterion::Criterion;
-use std::hint::black_box;
-
+use indexmap::IndexMap;
 use merkle::MerkleTree;
 use rand::RngCore;
 use ring::digest::{Algorithm, SHA512};
+use std::hint::black_box;
 
 static DIGEST: &Algorithm = &SHA512;
 use merkle_tree::MerkleTree as OurTree;
@@ -21,7 +21,7 @@ fn bench_small_str_tree(c: &mut Criterion) {
     });
     group.bench_function("Current::construct - small", |b| {
         let values: Vec<_> = values.iter().map(|s| s.as_bytes().to_vec()).collect();
-        b.iter(|| OurTree::construct(black_box(&values)))
+        b.iter(|| OurTree::construct(black_box(&values), black_box(IndexMap::new())))
     });
     group.finish();
 }
@@ -40,7 +40,8 @@ fn bench_small_str_proof_gen(c: &mut Criterion) {
     });
     group.bench_function("Current::prove - small", |b| {
         let values: Vec<_> = values.iter().map(|s| s.as_bytes().to_vec()).collect();
-        let tree = OurTree::construct(&values);
+        let store = IndexMap::new();
+        let tree = OurTree::construct(&values, store);
 
         b.iter(|| {
             for value in &values {
@@ -69,12 +70,13 @@ fn bench_small_str_proof_check(c: &mut Criterion) {
     });
     group.bench_function("Current::verify_proof - small", |b| {
         let values: Vec<_> = values.iter().map(|s| s.as_bytes().to_vec()).collect();
-        let tree = OurTree::construct(&values);
+        let store = IndexMap::new();
+        let tree = OurTree::construct(&values, store);
         let proofs = tree.proof_multiple(&values);
         let root_hash = tree.root();
         b.iter(|| {
             for (i, proof) in proofs.iter().enumerate() {
-                OurTree::verify_proof(
+                OurTree::<IndexMap<_, _>>::verify_proof(
                     black_box(&values[i]),
                     black_box(proof),
                     black_box(root_hash),
@@ -97,7 +99,7 @@ fn bench_big_rnd_tree(c: &mut Criterion) {
         b.iter(|| MerkleTree::from_vec(DIGEST, black_box(values.clone())))
     });
     group.bench_function("OurTree::construct - big", |b| {
-        b.iter(|| OurTree::construct(black_box(&values)))
+        b.iter(|| OurTree::construct(black_box(&values), black_box(IndexMap::new())))
     });
     group.finish();
 }
@@ -120,7 +122,8 @@ fn bench_big_rnd_proof_gen(c: &mut Criterion) {
         })
     });
     group.bench_function("Current::prove - big", |b| {
-        let tree = OurTree::construct(&values);
+        let store = IndexMap::new();
+        let tree = OurTree::construct(&values, store);
 
         b.iter(|| {
             for value in &values {
@@ -155,12 +158,13 @@ fn bench_big_rnd_proof_check(c: &mut Criterion) {
         })
     });
     group.bench_function("Current::verify_proof - big", |b| {
-        let tree = OurTree::construct(&values);
+        let store = IndexMap::new();
+        let tree = OurTree::construct(&values, store);
         let proofs = tree.proof_multiple(&values);
         let root_hash = tree.root();
         b.iter(|| {
             for (i, proof) in proofs.iter().enumerate() {
-                OurTree::verify_proof(
+                OurTree::<IndexMap<_, _>>::verify_proof(
                     black_box(&values[i]),
                     black_box(proof),
                     black_box(root_hash),

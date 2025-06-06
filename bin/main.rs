@@ -25,9 +25,11 @@ fn main() {
     println!("{:?}", now.elapsed());
 }
 fn append_multiple_to_un_balanced_tree() {
+    use indexmap::IndexMap;
     let index = 3;
+    let store = IndexMap::new();
     let data = example_data(index);
-    let mut tree = MerkleTree::construct(&data);
+    let mut tree = MerkleTree::construct(&data, store);
     let input: Vec<_> = (80..=85).map(|d| vec![d]).collect();
     //tree.append_multiple(&input);
     for (i, h) in input.iter().enumerate() {
@@ -39,7 +41,9 @@ fn append_multiple_to_un_balanced_tree() {
         tree.print_data_route(h);
         let root_hash = tree.root();
         if let Some(proof) = tree.prove(h) {
-            assert!(MerkleTree::verify_proof(h, &proof, root_hash))
+            assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                h, &proof, root_hash
+            ))
         }
     }
     tree.pretty_print();

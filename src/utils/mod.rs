@@ -1,12 +1,9 @@
 use bytes::Bytes;
-use indexmap::IndexMap;
 use sha2::Digest;
+mod stores;
+pub use stores::*;
 pub type Data = Vec<u8>;
 pub type Hash = Bytes;
-// Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
-// Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
-pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
-
 /// Which side to put Hash on when concatinating proof hashes
 #[repr(u8)]
 #[derive(Debug, Clone, Default, Copy, PartialOrd, Ord, PartialEq, Eq, std::hash::Hash)]
@@ -162,7 +159,7 @@ pub fn example_data(n: usize) -> Vec<Data> {
 }
 
 pub fn build_tree(
-    tree_cache: &mut TreeCache,
+    tree_cache: &mut impl NodeStore,
     input: impl IntoIterator<Item = Node>,
     items_index_per_level: &mut [usize],
     level_count: usize,
@@ -215,9 +212,9 @@ pub fn build_tree(
                 from_duplicate: node.from_duplicate,
             };
             let parent = PathTrace::new(direction, level, *parent_index);
-            tree_cache.insert(left, node);
-            tree_cache.insert(right, right_node);
-            tree_cache.insert(parent, parent_node.clone());
+            tree_cache.set(left, node);
+            tree_cache.set(right, right_node);
+            tree_cache.set(parent, parent_node.clone());
             *parent_index = std::cmp::min(*parent_index + 1, max_index);
             next_level.push((parent, parent_node));
         }
