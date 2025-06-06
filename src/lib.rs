@@ -1,5 +1,6 @@
 /*
 
+
 Building a simple Merkle Tree
 
 Exercise 1:
@@ -51,38 +52,36 @@ Exercise 3 (Hard):
  */
 pub mod utils;
 use bytes::Bytes;
-use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 use std::collections::BTreeMap;
 pub use utils::*;
-
 #[derive(Debug)]
-pub struct MerkleTree<'a> {
+pub struct MerkleTree<Store: NodeStore> {
     root: Hash,
     is_padded: bool,
     pub leaf_count: usize,
     level_count: usize,
-    leaf_data: IndexSet<&'a Vec<u8>>, // for faster lookups of leaves by data
+    unique_leaf_count: usize, // for faster lookups of leaves by data
     items_index_per_level: Vec<usize>,
     padding_start: usize,
     // for faster lookup , (level, Direction, index), eg. for H2, (depthlength, Right, index)
-    pub tree_cache: TreeCache, // O(1) - path look ups, O(n) search by hash
+    pub tree_cache: Store, // O(1) - path look ups, O(n) search by hash
 }
 
-impl<'a> MerkleTree<'a> {
+impl<Store: NodeStore> MerkleTree<Store> {
     /// Gets root hash for this tree
     pub fn root(&self) -> &Hash {
         &self.root
     }
 
     /// Constructs a Merkle tree from given input data
-    pub fn construct(input: &'a [Data]) -> Self {
-        let leaf_data: IndexSet<_> = input.iter().collect();
+    pub fn construct(input: &[Data], store: Store) -> Self {
+        let unique_leaf_count = input.iter().unique().size_hint().1.unwrap_or_default();
         let is_padded = !input.len().is_power_of_two();
         let (leaf_count, input) = pad_input(input);
         let level_count = get_level_count(leaf_count);
-        let total_tree_nodes = 2 * leaf_count - 1;
         let mut items_index_per_level = vec![0; level_count];
-        let mut tree_cache = IndexMap::with_capacity(total_tree_nodes);
+        let mut tree_cache = store;
         let (_root_path, root) = build_tree(
             &mut tree_cache,
             input,
@@ -91,14 +90,15 @@ impl<'a> MerkleTree<'a> {
             false,
             0,
         );
-        let padding_start = leaf_data.len() - 1;
-        tree_cache.sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
+        let padding_start = unique_leaf_count - 1;
+
+        tree_cache.sort();
 
         Self {
             items_index_per_level,
             padding_start,
             root: root.data,
-            leaf_data,
+            unique_leaf_count,
             is_padded,
             leaf_count,
             level_count,
@@ -141,38 +141,25 @@ impl<'a> MerkleTree<'a> {
             self.root = Bytes::copy_from_slice(&new_root.data);
         }
     }
-    pub fn append(&mut self, data: &'a Data) {
-        if self.leaf_data.contains(data) {
-            return;
-        }
+    pub fn append(&mut self, data: &Data) {
         if !self.is_padded {
             self.expand_tree(data);
-            self.tree_cache
-                .sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
+            self.tree_cache.sort();
             return;
         }
         // handling cases of adding to un already unbalanced tree with padding;
         self.expand_padded(data);
-        self.tree_cache
-            .sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
+        self.tree_cache.sort();
     }
     /// expands the tree by the next_power_of_two
-    pub fn expand_tree(&mut self, data: &'a Data) {
+    pub fn expand_tree(&mut self, data: &Data) {
         // leaf_counts is already a is_power_of_two
         let next_needed_nodes = (self.leaf_count + 1).next_power_of_two() - self.leaf_count;
         let node = Node::new(data, true);
         let input = std::iter::repeat_n(node, next_needed_nodes);
         let total_tree_nodes = 2 * next_needed_nodes - 1;
         // move every path up by level up
-        let temp: Vec<_> = self.tree_cache.drain(..).collect();
-        temp.into_iter().for_each(|(mut key, value)| {
-            key.level += 1;
-            if key.direction == HashDirection::Center {
-                key.direction = HashDirection::Left;
-                key.index = 0;
-            }
-            self.tree_cache.insert(key, value);
-        });
+        self.tree_cache.shift_nodes_up();
         self.tree_cache.reserve(total_tree_nodes);
         self.level_count += 1;
         // set item_per_level too;
@@ -197,12 +184,12 @@ impl<'a> MerkleTree<'a> {
             is_left: false,
             from_duplicate: false,
         };
-        self.tree_cache.insert(PathTrace::root(), root);
-        self.leaf_data.insert(data);
-        self.padding_start = self.leaf_data.len() - 1;
-        self.is_padded = !self.leaf_data.len().is_power_of_two();
+        self.tree_cache.set(PathTrace::root(), root);
+        self.unique_leaf_count += 1;
+        self.padding_start = self.unique_leaf_count - 1;
+        self.is_padded = !self.unique_leaf_count.is_power_of_two();
     }
-    pub fn expand_padded(&mut self, data: &'a Data) {
+    pub fn expand_padded(&mut self, data: &Data) {
         let padding_start = self.padding_start;
         // replace the first padded copy with unique pair;
         let hashed_data = hash_data(&data);
@@ -211,7 +198,7 @@ impl<'a> MerkleTree<'a> {
             self.level_count,
             padding_start,
         );
-        if !self.tree_cache.contains_key(&first_padded) {
+        if !self.tree_cache.exists(&first_padded) {
             first_padded.index += 1;
         }
         let sibling_path = first_padded.get_sibling_path();
@@ -245,17 +232,17 @@ impl<'a> MerkleTree<'a> {
                     is_left: true,
                     from_duplicate: true,
                 };
-                self.tree_cache.insert(next_node.get_sibling_path(), left);
+                self.tree_cache.set(next_node.get_sibling_path(), left);
                 self.cascade_update(next_node);
             }
         }
-        self.leaf_data.insert(data);
-        self.is_padded = !self.leaf_data.len().is_power_of_two();
+        self.unique_leaf_count += 1;
+        self.is_padded = !self.unique_leaf_count.is_power_of_two();
 
         self.padding_start = if self.is_padded {
-            std::cmp::min(self.padding_start + 2, self.leaf_data.len())
+            std::cmp::min(self.padding_start + 2, self.unique_leaf_count - 1)
         } else {
-            self.leaf_data.len() - 1
+            self.unique_leaf_count - 1
         };
     }
     pub fn compare_hashes(&self, left: &PathTrace, right: &PathTrace) -> bool {
@@ -271,10 +258,7 @@ impl<'a> MerkleTree<'a> {
     }
 
     pub fn fetch_cache_pathtrace(&self, target_hash: &Hash) -> Option<PathTrace> {
-        self.tree_cache
-            .binary_search_by(|_, node| node.data.cmp(target_hash))
-            .ok()
-            .map(|index| self.tree_cache.get_index(index).map(|(key, _)| *key))?
+        self.tree_cache.get_key_by_hash(target_hash)
     }
 
     pub fn print_data_route(&self, data: &Data) {
@@ -299,11 +283,8 @@ impl<'a> MerkleTree<'a> {
 
     pub fn find_data_route(&self, data: &Data) -> Vec<PathTrace> {
         // faster path, fetch the path from leaf_set;
-        if let Some(trace) = self
-            .leaf_data
-            .get_index_of(data)
-            .map(|index| PathTrace::new(HashDirection::from_index(index), self.level_count, index))
-        {
+        let target_hash = hash_data(data);
+        if let Some(trace) = self.tree_cache.get_key_by_hash(&target_hash) {
             return trace.generate_route().collect();
         }
         let target_hash = hash_data(data);
@@ -314,8 +295,8 @@ impl<'a> MerkleTree<'a> {
     }
 
     /// Verifies that the given input data produces the given root hash
-    pub fn verify(input: &'a [Data], root_hash: &Data) -> bool {
-        let generated_tree = Self::construct(input);
+    pub fn verify(input: &[Data], root_hash: &Data, store: Store) -> bool {
+        let generated_tree = Self::construct(input, store);
         generated_tree.root() == root_hash
     }
 
@@ -335,10 +316,8 @@ impl<'a> MerkleTree<'a> {
         generated == root_hash
     }
     /// appends multiple leaves to our tree
-    pub fn append_multiple(&mut self, input: &'a [Data]) {
+    pub fn append_multiple(&mut self, input: &[Data]) {
         input.iter().for_each(|data| self.append(data));
-        self.tree_cache
-            .sort_unstable_by(|_, h1, _, h2| h1.data.cmp(&h2.data));
     }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
@@ -365,7 +344,7 @@ impl<'a> MerkleTree<'a> {
 
     pub fn pretty_print(&self) {
         let mut nodes_per_level: BTreeMap<PathTrace, Vec<(PathTrace, &Node)>> = BTreeMap::new();
-        self.tree_cache.iter().for_each(|(path, node)| {
+        self.tree_cache.entries().for_each(|(path, node)| {
             if let Some(parent) = path.get_parent_path() {
                 let entry = nodes_per_level.entry(parent).or_default();
                 entry.push((*path, node));
@@ -409,24 +388,27 @@ impl<'a> MerkleTree<'a> {
 #[cfg(test)]
 mod merkle_tree {
     use super::*;
-
+    use indexmap::IndexMap;
     #[test]
     fn test_constructions() {
         let data = example_data(4);
-        let tree = MerkleTree::construct(&data);
+        let store = IndexMap::new();
+        let tree = MerkleTree::construct(&data, store);
         let expected_root = "9675e04b4ba9dc81b06e81731e2d21caa2c95557a85dcfa3fff70c9ff0f30b2e";
         assert_eq!(hex::encode(tree.root()), expected_root);
 
         //Uncomment if your implementation allows for unbalanced trees
         let data = example_data(3);
-        let tree = MerkleTree::construct(&data);
+        let store = IndexMap::new();
+        let tree = MerkleTree::construct(&data, store);
         // using dupliate padding of the last value
         // (correction here) let expected_root = "773a93ac37ea78b3f14ac31872c83886b0a0f1fec562c4e848e023c889c2ce9f";
         let expected_root = "f2dcdd96791b6bac5d554f2d320e594b834f5da1981812c3707e7772234cb0ad";
         assert_eq!(hex::encode(tree.root()), expected_root);
 
         let data = example_data(8);
-        let tree = MerkleTree::construct(&data);
+        let store = IndexMap::new();
+        let tree = MerkleTree::construct(&data, store);
         let expected_root = "0727b310f87099c1ba2ec0ba408def82c308237c8577f0bdfd2643e9cc6b7578";
         assert_eq!(hex::encode(tree.root()), expected_root);
     }
@@ -434,11 +416,14 @@ mod merkle_tree {
     fn test_verifing_proof() {
         (1_usize..100).for_each(|index| {
             let data = example_data(index);
-            let tree = MerkleTree::construct(&data);
+            let store = IndexMap::new();
+            let tree = MerkleTree::construct(&data, store);
             let root_hash = tree.root();
 
             for (h1, proof) in data.iter().zip(tree.proof_multiple(&data)) {
-                assert!(MerkleTree::verify_proof(h1, &proof, root_hash))
+                assert!(MerkleTree::<IndexMap<PathTrace, Node>>::verify_proof(
+                    h1, &proof, root_hash
+                ))
             }
         });
     }
@@ -449,11 +434,14 @@ mod merkle_tree {
             .filter(|i| i.is_power_of_two())
             .for_each(|index| {
                 let data = example_data(index);
-                let mut tree = MerkleTree::construct(&data);
+                let store = IndexMap::new();
+                let mut tree = MerkleTree::construct(&data, store);
                 tree.append(&extra);
                 let root_hash = tree.root();
                 if let Some(proof) = tree.prove(&extra) {
-                    assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
+                    assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                        &extra, &proof, root_hash
+                    ))
                 }
             });
     }
@@ -463,13 +451,16 @@ mod merkle_tree {
             .filter(|i| i.is_power_of_two())
             .for_each(|index| {
                 let data = example_data(index);
-                let mut tree = MerkleTree::construct(&data);
+                let store = IndexMap::new();
+                let mut tree = MerkleTree::construct(&data, store);
                 let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
                 tree.append_multiple(&input);
                 let root_hash = tree.root();
                 for h in input.iter() {
                     if let Some(proof) = tree.prove(h) {
-                        assert!(MerkleTree::verify_proof(h, &proof, root_hash))
+                        assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                            h, &proof, root_hash
+                        ))
                     }
                 }
             });
@@ -478,13 +469,16 @@ mod merkle_tree {
     fn append_multiple_to_un_balanced_tree() {
         (1_usize..100).for_each(|index| {
             let data = example_data(index);
-            let mut tree = MerkleTree::construct(&data);
+            let store = IndexMap::new();
+            let mut tree = MerkleTree::construct(&data, store);
             let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
             tree.append_multiple(&input);
             let root_hash = tree.root();
             for h in input.iter() {
                 if let Some(proof) = tree.prove(h) {
-                    assert!(MerkleTree::verify_proof(h, &proof, root_hash))
+                    assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                        h, &proof, root_hash
+                    ))
                 }
             }
         });
@@ -494,11 +488,14 @@ mod merkle_tree {
         let extra = vec![100];
         (1_usize..100).for_each(|index| {
             let data = example_data(index);
-            let mut tree = MerkleTree::construct(&data);
+            let store = IndexMap::new();
+            let mut tree = MerkleTree::construct(&data, store);
             tree.append(&extra);
             let root_hash = tree.root();
             if let Some(proof) = tree.prove(&extra) {
-                assert!(MerkleTree::verify_proof(&extra, &proof, root_hash))
+                assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                    &extra, &proof, root_hash
+                ))
             }
         });
     }
@@ -521,13 +518,16 @@ mod merkle_tree {
         for (input, hash) in pairs {
             let root_hash = hex::decode(hash).unwrap();
             let data = example_data(input);
-            assert!(MerkleTree::verify(&data, &root_hash))
+            let store = IndexMap::new();
+            assert!(MerkleTree::verify(&data, &root_hash, store))
         }
     }
     #[test]
+    //#[ignore]
     fn update_works() {
         let data = example_data(4);
-        let mut tree = MerkleTree::construct(&data);
+        let store = IndexMap::new();
+        let mut tree = MerkleTree::construct(&data, store);
         // update the first node at index 0, left to a 5;
         let update = vec![5];
         tree.pretty_print();
@@ -543,7 +543,9 @@ mod merkle_tree {
         // generate prove for update data used;
         let root_hash = tree.root();
         if let Some(proof) = tree.prove(&update) {
-            assert!(MerkleTree::verify_proof(&update, &proof, root_hash));
+            assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
+                &update, &proof, root_hash
+            ));
         }
     }
 }
