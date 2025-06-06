@@ -61,7 +61,7 @@ pub struct MerkleTree<Store: NodeStore> {
     is_padded: bool,
     pub leaf_count: usize,
     level_count: usize,
-    unique_leaf_count: usize, // for faster lookups of leaves by data
+    unique_leaf_count: usize,
     items_index_per_level: Vec<usize>,
     padding_start: usize,
     // for faster lookup , (level, Direction, index), eg. for H2, (depthlength, Right, index)
@@ -75,9 +75,13 @@ impl<Store: NodeStore> MerkleTree<Store> {
     }
 
     /// Constructs a Merkle tree from given input data
-    pub fn construct(input: &[Data], store: Store) -> Self {
+    pub fn construct<R>(input: &[R], store: Store) -> Self
+    where
+        R: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+    {
+        let size_hint = input.iter().size_hint().1.unwrap_or_default();
         let unique_leaf_count = input.iter().unique().size_hint().1.unwrap_or_default();
-        let is_padded = !input.len().is_power_of_two();
+        let is_padded = !size_hint.is_power_of_two();
         let (leaf_count, input) = pad_input(input);
         let level_count = get_level_count(leaf_count);
         let mut items_index_per_level = vec![0; level_count];
@@ -141,7 +145,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
             self.root = Bytes::copy_from_slice(&new_root.data);
         }
     }
-    pub fn append(&mut self, data: &Data) {
+    pub fn append<D: AsRef<[u8]>>(&mut self, data: &D) {
         if !self.is_padded {
             self.expand_tree(data);
             self.tree_cache.sort();
@@ -152,7 +156,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         self.tree_cache.sort();
     }
     /// expands the tree by the next_power_of_two
-    pub fn expand_tree(&mut self, data: &Data) {
+    pub fn expand_tree<D: AsRef<[u8]>>(&mut self, data: &D) {
         // leaf_counts is already a is_power_of_two
         let next_needed_nodes = (self.leaf_count + 1).next_power_of_two() - self.leaf_count;
         let node = Node::new(data, true);
@@ -189,7 +193,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         self.padding_start = self.unique_leaf_count - 1;
         self.is_padded = !self.unique_leaf_count.is_power_of_two();
     }
-    pub fn expand_padded(&mut self, data: &Data) {
+    pub fn expand_padded<D: AsRef<[u8]>>(&mut self, data: &D) {
         let padding_start = self.padding_start;
         // replace the first padded copy with unique pair;
         let hashed_data = hash_data(&data);
@@ -261,7 +265,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         self.tree_cache.get_key_by_hash(target_hash)
     }
 
-    pub fn print_data_route(&self, data: &Data) {
+    pub fn print_data_route<D: AsRef<[u8]>>(&self, data: &D) {
         let route = self.find_data_route(data);
         route.iter().for_each(|path| {
             println!(
@@ -277,11 +281,11 @@ impl<Store: NodeStore> MerkleTree<Store> {
         });
     }
     /// generate proof for multiple sets of data
-    pub fn proof_multiple(&self, input: &[Data]) -> Vec<Proof> {
+    pub fn proof_multiple<D: AsRef<[u8]>>(&self, input: &[D]) -> Vec<Proof> {
         input.iter().flat_map(|data| self.prove(data)).collect()
     }
 
-    pub fn find_data_route(&self, data: &Data) -> Vec<PathTrace> {
+    pub fn find_data_route<D: AsRef<[u8]>>(&self, data: &D) -> Vec<PathTrace> {
         // faster path, fetch the path from leaf_set;
         let target_hash = hash_data(data);
         if let Some(trace) = self.tree_cache.get_key_by_hash(&target_hash) {
@@ -295,13 +299,18 @@ impl<Store: NodeStore> MerkleTree<Store> {
     }
 
     /// Verifies that the given input data produces the given root hash
-    pub fn verify(input: &[Data], root_hash: &Data, store: Store) -> bool {
+    pub fn verify<D: AsRef<[u8]> + Eq + Clone + std::hash::Hash>(
+        input: &[D],
+        root_hash: &D,
+        store: Store,
+    ) -> bool {
+        let root_hash = Bytes::copy_from_slice(root_hash.as_ref());
         let generated_tree = Self::construct(input, store);
-        generated_tree.root() == root_hash
+        generated_tree.root() == &root_hash
     }
 
     /// Verifies that the given data and proof_path correctly produce the given root_hash
-    pub fn verify_proof(data: &Data, proof: &Proof, root_hash: &Hash) -> bool {
+    pub fn verify_proof<D: AsRef<[u8]>>(data: &D, proof: &Proof, root_hash: &Hash) -> bool {
         let hashed_data = hash_data(data);
         let generated = proof
             .hashes
@@ -316,12 +325,12 @@ impl<Store: NodeStore> MerkleTree<Store> {
         generated == root_hash
     }
     /// appends multiple leaves to our tree
-    pub fn append_multiple(&mut self, input: &[Data]) {
+    pub fn append_multiple<D: AsRef<[u8]>>(&mut self, input: &[D]) {
         input.iter().for_each(|data| self.append(data));
     }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
-    pub fn prove(&self, data: &Data) -> Option<Proof> {
+    pub fn prove<D: AsRef<[u8]>>(&self, data: &D) -> Option<Proof> {
         // we use our tree_cache and some math to calculate the sibling_node at each parent level
         // See PathTrace for math
         let target_hash = hash_data(&data);
