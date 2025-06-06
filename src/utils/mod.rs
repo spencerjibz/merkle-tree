@@ -43,8 +43,8 @@ pub struct Node {
     pub from_duplicate: bool,
 }
 impl Node {
-    pub fn new(data: &Data, is_left: bool) -> Self {
-        let data = Bytes::copy_from_slice(data);
+    pub fn new<I: AsRef<[u8]>>(data: I, is_left: bool) -> Self {
+        let data = Bytes::copy_from_slice(data.as_ref());
         Self {
             is_left,
             data,
@@ -229,8 +229,10 @@ fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) ->
 }
 /// add padding to support unbalanced trees
 /// we resize to the nearest power of 2 and pad the last element
-pub fn pad_input(input: &[Data]) -> (usize, impl Iterator<Item = Node> + use<'_>) {
-    assert!(!input.is_empty(), "can't support empty inputs");
+pub fn pad_input<R: AsRef<[u8]> + Clone>(
+    input: &[R],
+) -> (usize, impl Iterator<Item = Node> + use<'_, R>) {
+    assert!(!input.len() > 1, "can't support less than 2 inputs");
     let padded = input.iter().map(|data| Node::new(data, true));
     let (_, length) = padded.size_hint();
     let mut length = length.unwrap_or(input.len());
