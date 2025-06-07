@@ -1,19 +1,19 @@
 use crate::HashDirection;
-
+mod sled_storage;
 use super::{Hash, Node, PathTrace};
 use indexmap::IndexMap;
+pub use sled_storage::*;
 pub trait NodeStore {
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node>;
-    fn get(&self, key: &PathTrace) -> Option<&Node>;
+    fn get(&self, key: &PathTrace) -> Option<Node>;
     fn get_key_by_hash(&self, hash: &Hash) -> Option<PathTrace>;
-    fn get_mut(&mut self, key: &PathTrace) -> Option<&mut Node>;
     /// sort the items by value, for store that support binary_search by value
     fn sort(&mut self);
     /// move all the nodes up by level (expensive for some stores)
     fn shift_nodes_up(&mut self);
     fn exists(&self, key: &PathTrace) -> bool;
     fn reserve(&mut self, items: usize);
-
+    fn update_value(&mut self, key: &PathTrace, next_value: Node);
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)>;
 }
 
@@ -22,9 +22,6 @@ pub trait NodeStore {
 pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
 
 impl NodeStore for TreeCache {
-    fn get_mut(&mut self, key: &PathTrace) -> Option<&mut Node> {
-        self.get_mut(key)
-    }
     fn reserve(&mut self, items: usize) {
         self.reserve(items);
     }
@@ -35,8 +32,8 @@ impl NodeStore for TreeCache {
         self.insert(key, value)
     }
 
-    fn get(&self, key: &PathTrace) -> Option<&Node> {
-        self.get(key)
+    fn get(&self, key: &PathTrace) -> Option<Node> {
+        self.get(key).cloned()
     }
 
     fn get_key_by_hash(&self, target_hash: &Hash) -> Option<PathTrace> {
@@ -58,7 +55,13 @@ impl NodeStore for TreeCache {
             self.set(key, value);
         });
     }
-    fn entries(&self) -> impl Iterator<Item = (&PathTrace, &Node)> {
-        self.iter()
+    fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)> {
+        self.iter().map(|(k, v)| (*k, v.clone()))
+    }
+
+    fn update_value(&mut self, key: &PathTrace, next_value: Node) {
+        if let Some(current) = self.get_mut(key) {
+            *current = next_value
+        }
     }
 }

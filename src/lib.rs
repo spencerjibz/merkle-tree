@@ -50,10 +50,12 @@ Exercise 3 (Hard):
                 H3|H4 => H6 => H5|H6 => H7 = root
 
  */
+pub mod stores;
 pub mod utils;
 use bytes::Bytes;
 use itertools::Itertools;
 use std::collections::BTreeMap;
+pub use stores::NodeStore;
 pub use utils::*;
 #[derive(Debug)]
 pub struct MerkleTree<Store: NodeStore> {
@@ -112,8 +114,9 @@ impl<Store: NodeStore> MerkleTree<Store> {
     /// update the target_hash with a new one.
     pub fn update(&mut self, target_hash: &Hash, new: Hash) {
         if let Some(current) = self.fetch_cache_pathtrace(target_hash) {
-            if let Some(target_node) = self.tree_cache.get_mut(&current) {
+            if let Some(mut target_node) = self.tree_cache.get(&current) {
                 target_node.data = new;
+                self.tree_cache.update_value(&current, target_node);
                 self.cascade_update(current);
             }
         }
@@ -132,12 +135,14 @@ impl<Store: NodeStore> MerkleTree<Store> {
                 } else {
                     hash_concat(&sibling_node.data, &current_node.data)
                 };
-                if let Some(parent_node) = path
-                    .get_parent_path()
-                    .and_then(|parent_path| self.tree_cache.get_mut(&parent_path))
-                {
-                    parent_node.data = next_parent_hash;
-                }
+                path.get_parent_path().and_then(|parent_path| {
+                    if let Some(mut parent_node) = self.tree_cache.get(&parent_path) {
+                        parent_node.data = next_parent_hash;
+                        self.tree_cache.update_value(&parent_path, parent_node);
+                    }
+                    None as Option<Node>
+                });
+                //parent_node.data = next_parent_hash;
             }
         });
         // update self. root;
@@ -215,22 +220,27 @@ impl<Store: NodeStore> MerkleTree<Store> {
             .iter()
             .any(|path| self.compare_hashes(&first_padded, path));
         if self.compare_hashes(&first_padded, &sibling_path) {
-            if let Some(first_padded_node) = self.tree_cache.get_mut(&first_padded) {
+            if let Some(mut first_padded_node) = self.tree_cache.get(&first_padded) {
                 if any_previous_contain_current_hash {
                     first_padded_node.data = hashed_data.clone();
+                    first_padded_node.from_duplicate = false;
+                    self.tree_cache
+                        .update_value(&first_padded, first_padded_node);
                 }
             }
         }
         // replace the sibling of the first padding_hahsh;
-        if let Some(sibling) = self.tree_cache.get_mut(&sibling_path) {
+        if let Some(mut sibling) = self.tree_cache.get(&sibling_path) {
             sibling.data = hashed_data.clone();
+            self.tree_cache.update_value(&sibling_path, sibling);
             self.cascade_update(first_padded);
         }
 
         for next_index in (sibling_path.index..self.leaf_count).step_by(2).skip(1) {
             let next_node = PathTrace::new(HashDirection::Right, sibling_path.level, next_index);
-            if let Some(found_right) = self.tree_cache.get_mut(&next_node) {
+            if let Some(mut found_right) = self.tree_cache.get(&next_node) {
                 found_right.data = hashed_data.clone();
+                self.tree_cache.update_value(&next_node, found_right);
                 let left = Node {
                     data: hashed_data.clone(),
                     is_left: true,
@@ -250,15 +260,15 @@ impl<Store: NodeStore> MerkleTree<Store> {
         };
     }
     pub fn compare_hashes(&self, left: &PathTrace, right: &PathTrace) -> bool {
-        self.tree_cache.get(left).map(|node| &node.data)
-            == self.tree_cache.get(right).map(|node| &node.data)
+        self.tree_cache.get(left).map(|node| node.data)
+            == self.tree_cache.get(right).map(|node| node.data)
     }
-    pub fn get_parent_hash(&self, path_trace: &PathTrace) -> Option<&Hash> {
+    pub fn get_parent_hash(&self, path_trace: &PathTrace) -> Option<Hash> {
         // numbers of items of that level is 2^level;
         // our parent is always one level up;
         path_trace
             .get_parent_path()
-            .and_then(|path| self.tree_cache.get(&path).map(|node| &node.data))
+            .and_then(|path| self.tree_cache.get(&path).map(|node| node.data))
     }
 
     pub fn fetch_cache_pathtrace(&self, target_hash: &Hash) -> Option<PathTrace> {
@@ -312,16 +322,17 @@ impl<Store: NodeStore> MerkleTree<Store> {
     /// Verifies that the given data and proof_path correctly produce the given root_hash
     pub fn verify_proof<D: AsRef<[u8]>>(data: &D, proof: &Proof, root_hash: &Hash) -> bool {
         let hashed_data = hash_data(data);
-        let generated = proof
-            .hashes
-            .iter()
-            .fold(hashed_data, |acc, &(_, direction, next_hash)| {
-                let is_left = direction == HashDirection::Left;
-                if is_left {
-                    return hash_concat(next_hash, &acc);
-                }
-                hash_concat(&acc, next_hash)
-            });
+        let generated =
+            proof
+                .hashes
+                .iter()
+                .fold(hashed_data, |acc, &(_, direction, ref next_hash)| {
+                    let is_left = direction == HashDirection::Left;
+                    if is_left {
+                        return hash_concat(next_hash, &acc);
+                    }
+                    hash_concat(&acc, next_hash)
+                });
         generated == root_hash
     }
     /// appends multiple leaves to our tree
@@ -342,7 +353,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
                     path = path.get_sibling_path();
                     self.tree_cache
                         .get(&path)
-                        .map(|node| (path.level, path.direction, &node.data))
+                        .map(|node| (path.level, path.direction, node.data))
                 })
                 .collect();
 
@@ -352,11 +363,11 @@ impl<Store: NodeStore> MerkleTree<Store> {
     }
 
     pub fn pretty_print(&self) {
-        let mut nodes_per_level: BTreeMap<PathTrace, Vec<(PathTrace, &Node)>> = BTreeMap::new();
+        let mut nodes_per_level: BTreeMap<PathTrace, Vec<(PathTrace, Node)>> = BTreeMap::new();
         self.tree_cache.entries().for_each(|(path, node)| {
             if let Some(parent) = path.get_parent_path() {
                 let entry = nodes_per_level.entry(parent).or_default();
-                entry.push((*path, node));
+                entry.push((path, node));
             }
         });
         println!("-----------------Tree-----------------------------");
