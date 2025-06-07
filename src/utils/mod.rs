@@ -1,12 +1,24 @@
+pub use crate::stores::NodeStore;
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
-mod stores;
-pub use stores::*;
 pub type Data = Vec<u8>;
 pub type Hash = Bytes;
 /// Which side to put Hash on when concatinating proof hashes
 #[repr(u8)]
-#[derive(Debug, Clone, Default, Copy, PartialOrd, Ord, PartialEq, Eq, std::hash::Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    Copy,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    std::hash::Hash,
+    Serialize,
+    Deserialize,
+)]
 pub enum HashDirection {
     Left = 0,
     Right = 1,
@@ -35,8 +47,9 @@ impl HashDirection {
         HashDirection::Right
     }
 }
+
 // Our nodes
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Node {
     pub is_left: bool,
     pub data: Hash,
@@ -53,13 +66,13 @@ impl Node {
     }
 }
 #[derive(Debug, Default)]
-pub struct Proof<'a> {
+pub struct Proof {
     /// The hashes to use when verifying the proof
     /// The first element of the tuple is which side the hash should be on when concatinating
     /// Add level to the proof eases visualization of the proof
-    pub hashes: Vec<(usize, HashDirection, &'a Hash)>, // (level, direction, hash)
+    pub hashes: Vec<(usize, HashDirection, Hash)>, // (level, direction, hash)
 }
-impl Proof<'_> {
+impl Proof {
     pub fn get_proof_in_hex(&self) -> Vec<(usize, HashDirection, String)> {
         self.hashes
             .iter()
@@ -68,7 +81,7 @@ impl Proof<'_> {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, std::hash::Hash, Serialize, Deserialize)]
 pub struct PathTrace {
     pub level: usize,
     pub direction: HashDirection,
