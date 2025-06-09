@@ -25,13 +25,20 @@ fn main() {
     println!("{:?}", now.elapsed());
 }
 fn append_multiple_to_un_balanced_tree() {
-    use indexmap::IndexMap;
+    use merkle_tree::stores::SledStore;
+    use sled::{Config, Mode};
+    let config = Config::default().temporary(true).mode(Mode::HighThroughput);
     let index = 3;
+    let db = config.open().unwrap();
+    let store = SledStore::new(&db, "test_db").unwrap();
+    /*  uncomment to use index map
+    use indexmap::IndexMap;
+    *
     let store = IndexMap::new();
+    *  */
     let data = example_data(index);
     let mut tree = MerkleTree::construct(&data, store);
     let input: Vec<_> = (80..=85).map(|d| vec![d]).collect();
-    //tree.append_multiple(&input);
     for (i, h) in input.iter().enumerate() {
         tree.append(h);
         tree.pretty_print();
@@ -41,9 +48,7 @@ fn append_multiple_to_un_balanced_tree() {
         tree.print_data_route(h);
         let root_hash = tree.root();
         if let Some(proof) = tree.prove(h) {
-            assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
-                h, &proof, root_hash
-            ))
+            assert!(MerkleTree::<SledStore>::verify_proof(h, &proof, root_hash))
         }
     }
     tree.pretty_print();

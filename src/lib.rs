@@ -335,10 +335,6 @@ impl<Store: NodeStore> MerkleTree<Store> {
                 });
         generated == root_hash
     }
-    /// appends multiple leaves to our tree
-    pub fn append_multiple<D: AsRef<[u8]>>(&mut self, input: &[D]) {
-        input.iter().for_each(|data| self.append(data));
-    }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree
     pub fn prove<D: AsRef<[u8]>>(&self, data: &D) -> Option<Proof> {

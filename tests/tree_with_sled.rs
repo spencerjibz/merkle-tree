@@ -75,7 +75,6 @@ mod tree_with_sled_store {
             });
     }
     #[test]
-    #[ignore]
     fn append_multiple_to_balanced_tree() {
         (1_usize..100)
             .filter(|i| i.is_power_of_two())
@@ -88,9 +87,9 @@ mod tree_with_sled_store {
                 .unwrap();
                 let mut tree = MerkleTree::construct(&data, store);
                 let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
-                tree.append_multiple(&input);
-                let root_hash = tree.root();
                 for h in input.iter() {
+                    tree.append(&h);
+                    let root_hash = tree.root();
                     if let Some(proof) = tree.prove(h) {
                         assert!(MerkleTree::<SledStore>::verify_proof(h, &proof, root_hash))
                     }
@@ -98,7 +97,6 @@ mod tree_with_sled_store {
             });
     }
     #[test]
-    #[ignore]
     fn append_multiple_to_un_balanced_tree() {
         (1_usize..100).for_each(|index| {
             let data = example_data(index);
@@ -109,9 +107,9 @@ mod tree_with_sled_store {
             .unwrap();
             let mut tree = MerkleTree::construct(&data, store);
             let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
-            tree.append_multiple(&input);
-            let root_hash = tree.root();
             for h in input.iter() {
+                tree.append(&h);
+                let root_hash = tree.root();
                 if let Some(proof) = tree.prove(h) {
                     assert!(MerkleTree::<SledStore>::verify_proof(h, &proof, root_hash))
                 }
