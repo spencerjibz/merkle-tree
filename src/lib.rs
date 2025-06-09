@@ -77,12 +77,15 @@ impl<Store: NodeStore> MerkleTree<Store> {
     }
 
     /// Constructs a Merkle tree from given input data
-    pub fn construct<R>(input: &[R], store: Store) -> Self
+    pub fn construct<B, I, U>(input: I, store: Store) -> Self
     where
-        R: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+        B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+        I: IntoIterator<IntoIter = U>,
+        U: Iterator<Item = B> + Clone,
     {
-        let size_hint = input.iter().size_hint().1.unwrap_or_default();
-        let unique_leaf_count = input.iter().unique().size_hint().1.unwrap_or_default();
+        let input = input.into_iter();
+        let size_hint = input.size_hint().1.unwrap_or_default();
+        let unique_leaf_count = input.clone().unique().size_hint().1.unwrap_or_default();
         let is_padded = !size_hint.is_power_of_two();
         let (leaf_count, input) = pad_input(input);
         let level_count = get_level_count(leaf_count);
@@ -111,7 +114,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
             tree_cache,
         }
     }
-    /// update the target_hash with a new one.
+    /// update th target_hash with a new one.
     pub fn update(&mut self, target_hash: &Hash, new: Hash) {
         if let Some(current) = self.fetch_cache_pathtrace(target_hash) {
             if let Some(mut target_node) = self.tree_cache.get(&current) {
@@ -309,11 +312,16 @@ impl<Store: NodeStore> MerkleTree<Store> {
     }
 
     /// Verifies that the given input data produces the given root hash
-    pub fn verify<D: AsRef<[u8]> + Eq + Clone + std::hash::Hash>(
-        input: &[D],
+    pub fn verify<D: AsRef<[u8]> + Eq + Clone + std::hash::Hash, I, U, B>(
+        input: I,
         root_hash: &D,
         store: Store,
-    ) -> bool {
+    ) -> bool
+    where
+        I: IntoIterator<IntoIter = U>,
+        U: Iterator<Item = B> + Clone,
+        B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+    {
         let root_hash = Bytes::copy_from_slice(root_hash.as_ref());
         let generated_tree = Self::construct(input, store);
         generated_tree.root() == &root_hash
