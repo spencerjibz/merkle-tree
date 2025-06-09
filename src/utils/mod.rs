@@ -1,5 +1,6 @@
 pub use crate::stores::NodeStore;
 use bytes::Bytes;
+use itertools::{peek_nth, Itertools};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 pub type Data = Vec<u8>;
@@ -242,13 +243,16 @@ fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) ->
 }
 /// add padding to support unbalanced trees
 /// we resize to the nearest power of 2 and pad the last element
-pub fn pad_input<R: AsRef<[u8]> + Clone>(
-    input: &[R],
-) -> (usize, impl Iterator<Item = Node> + use<'_, R>) {
-    assert!(!input.len() > 1, "can't support less than 2 inputs");
-    let padded = input.iter().map(|data| Node::new(data, true));
-    let (_, length) = padded.size_hint();
-    let mut length = length.unwrap_or(input.len());
+pub fn pad_input<R, I>(input: I) -> (usize, impl Iterator<Item = Node> + use<I, R>)
+where
+    R: AsRef<[u8]> + Clone,
+    I: Iterator<Item = R>,
+{
+    let mut length = input.size_hint().1.unwrap_or_default();
+    assert!(!length > 1, "can't support less than 2 inputs");
+    let input = input.map(|data| Node::new(data, true));
+    let mut input = peek_nth(input);
+    let last = input.peek_nth(length - 1);
 
     let fill_count = if !length.is_power_of_two() {
         length.next_power_of_two() - length
@@ -256,10 +260,9 @@ pub fn pad_input<R: AsRef<[u8]> + Clone>(
         0
     };
     length += fill_count;
-    let last = input.last().unwrap();
-    let mut last = Node::new(last, true);
+    let mut last = last.unwrap().clone();
     last.from_duplicate = true;
-    (length, padded.chain(std::iter::repeat_n(last, fill_count)))
+    (length, input.pad_using(length, move |_| last.clone()))
 }
 #[cfg(test)]
 mod path_trace {
