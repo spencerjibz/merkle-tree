@@ -67,9 +67,9 @@ mod tree_with_indexmap_store {
                 let store = IndexMap::new();
                 let mut tree = MerkleTree::construct(&data, store);
                 let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
-                tree.append_multiple(&input);
-                let root_hash = tree.root();
                 for h in input.iter() {
+                    tree.append(&h);
+                    let root_hash = tree.root();
                     if let Some(proof) = tree.prove(h) {
                         assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
                             h, &proof, root_hash
@@ -85,9 +85,9 @@ mod tree_with_indexmap_store {
             let store = IndexMap::new();
             let mut tree = MerkleTree::construct(&data, store);
             let input: Vec<_> = (112..130).map(|d| vec![d]).collect();
-            tree.append_multiple(&input);
-            let root_hash = tree.root();
             for h in input.iter() {
+                tree.append(&h);
+                let root_hash = tree.root();
                 if let Some(proof) = tree.prove(h) {
                     assert!(MerkleTree::<IndexMap<_, _>>::verify_proof(
                         h, &proof, root_hash
