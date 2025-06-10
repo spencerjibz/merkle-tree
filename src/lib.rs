@@ -203,6 +203,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
             from_duplicate: false,
         };
         self.tree_cache.set(PathTrace::root(), root);
+        self.tree_cache.trigger_batch_actions();
         self.unique_leaf_count += 1;
         self.padding_start = self.unique_leaf_count - 1;
         self.is_padded = !self.unique_leaf_count.is_power_of_two();
@@ -235,6 +236,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
                     first_padded_node.from_duplicate = false;
                     self.tree_cache
                         .update_value(&first_padded, first_padded_node);
+                    self.tree_cache.trigger_batch_actions();
                 }
             }
         }
@@ -242,6 +244,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         if let Some(mut sibling) = self.tree_cache.get(&sibling_path) {
             sibling.data = hashed_data.clone();
             self.tree_cache.update_value(&sibling_path, sibling);
+            self.tree_cache.trigger_batch_actions();
             self.cascade_update(first_padded);
         }
 
@@ -259,6 +262,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
                 self.cascade_update(next_node);
             }
         }
+        self.tree_cache.trigger_batch_actions();
         self.unique_leaf_count += 1;
         self.is_padded = !self.unique_leaf_count.is_power_of_two();
 

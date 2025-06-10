@@ -1,22 +1,27 @@
 use super::NodeStore;
 use crate::PathTrace;
 use crate::{HashDirection, Node};
-use sled::Result;
-use sled::Tree;
-
+use sled::{Batch, Db, Result};
+use sled::{IVec, Tree};
 #[derive(Clone, Debug)]
 pub struct SledStore {
     node_store: Tree,    // (path_trace, Node)
     hash_key_tree: Tree, // (hash, path_trace)
+    node_store_batch: Batch,
+    hash_key_tree_batch: Batch,
 }
 
 impl SledStore {
-    pub fn new(db: &sled::Db, name: &str) -> Result<Self> {
+    pub fn new(db: &Db, name: &str) -> Result<Self> {
         let node_store = db.open_tree(name)?;
         let hash_key_tree = db.open_tree(format!("{name}-lookup"))?;
+        let node_store_batch = Batch::default();
+        let hash_key_tree_batch = Batch::default();
         Ok(Self {
             node_store,
             hash_key_tree,
+            node_store_batch,
+            hash_key_tree_batch,
         })
     }
     pub fn get_node(&self, key: impl AsRef<[u8]>) -> Option<Node> {
@@ -34,16 +39,12 @@ impl NodeStore for SledStore {
         let path: Vec<u8> = bincode::serialize(&key).ok()?;
         let node: Vec<u8> = bincode::serialize(&value).ok()?;
         let hash = bincode::serialize(&value.data).ok()?;
-        let node = self
-            .node_store
-            .insert(&path, node)
-            .unwrap()
-            .and_then(|v| bincode::deserialize(v.as_ref()).ok());
+        self.node_store_batch.insert(path.clone(), node);
         // skip updating this for duplicates
         if !self.hash_key_tree.contains_key(&hash).unwrap_or_default() {
-            self.hash_key_tree.insert(hash, path).ok()?;
+            self.hash_key_tree_batch.insert(hash, path);
         }
-        node
+        Some(value)
     }
 
     fn get(&self, key: &crate::PathTrace) -> Option<crate::Node> {
@@ -126,5 +127,30 @@ impl NodeStore for SledStore {
 
     fn update_value(&mut self, key: &PathTrace, next_value: Node) {
         self.set(*key, next_value);
+        self.trigger_batch_actions();
     }
+
+    fn trigger_batch_actions(&mut self) {
+        let node_store_batch = std::mem::take(&mut self.node_store_batch);
+        let hash_key_tree_batch = std::mem::take(&mut self.hash_key_tree_batch);
+        self.node_store
+            .apply_batch(node_store_batch)
+            .expect("failed to insert");
+        self.hash_key_tree
+            .apply_batch(hash_key_tree_batch)
+            .expect("failed to insert")
+    }
+}
+
+pub fn create_large_input_byes(size: usize, db: &Db) -> (usize, impl Iterator<Item = IVec>) {
+    let tree = db
+        .open_tree(format!("large-{size}-bytes"))
+        .expect("failed to create tree");
+    let mut batch = Batch::default();
+    for i in 0..size {
+        let bytes = i.to_ne_bytes();
+        batch.insert(&bytes, &bytes);
+    }
+    let _ = tree.apply_batch(batch);
+    (tree.len(), tree.iter().values().flat_map(|v| v.ok()))
 }

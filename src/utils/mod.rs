@@ -234,6 +234,7 @@ pub fn build_tree(
         }
         nodes = next_level;
     }
+    tree_cache.trigger_batch_actions();
     nodes.pop().unwrap_or_default()
 }
 fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) -> usize {

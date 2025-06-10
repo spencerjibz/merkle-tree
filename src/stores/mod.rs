@@ -4,6 +4,7 @@ use super::{Hash, Node, PathTrace};
 use indexmap::IndexMap;
 pub use sled_storage::*;
 pub trait NodeStore {
+    // add new values to the store, (this could also be scheduling a batch insert)
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node>;
     fn get(&self, key: &PathTrace) -> Option<Node>;
     fn get_key_by_hash(&self, hash: &Hash) -> Option<PathTrace>;
@@ -15,6 +16,7 @@ pub trait NodeStore {
     fn reserve(&mut self, items: usize);
     fn update_value(&mut self, key: &PathTrace, next_value: Node);
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)>;
+    fn trigger_batch_actions(&mut self);
 }
 
 // Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
@@ -22,6 +24,9 @@ pub trait NodeStore {
 pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
 
 impl NodeStore for TreeCache {
+    fn trigger_batch_actions(&mut self) {
+        // do nothing as this is not supported for this store
+    }
     fn reserve(&mut self, items: usize) {
         self.reserve(items);
     }
