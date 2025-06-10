@@ -243,19 +243,22 @@ fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) ->
 }
 /// add padding to support unbalanced trees
 /// we resize to the nearest power of 2 and pad the last element
-pub fn pad_input<R, I>(input: I) -> (usize, impl Iterator<Item = Node> + use<I, R>)
+pub fn pad_input<R, I>(
+    input: I,
+    size_hint: usize,
+) -> (usize, impl Iterator<Item = Node> + use<I, R>)
 where
     R: AsRef<[u8]> + Clone,
     I: Iterator<Item = R>,
 {
-    let mut length = input.size_hint().1.unwrap_or_default();
+    let mut length = size_hint;
     assert!(!length > 1, "can't support less than 2 inputs");
     let input = input.map(|data| Node::new(data, true));
     let mut input = peek_nth(input);
-    let last = input.peek_nth(length - 1);
+    let last = input.peek_nth(length.saturating_sub(1));
 
     let fill_count = if !length.is_power_of_two() {
-        length.next_power_of_two() - length
+        length.next_power_of_two().saturating_sub(length)
     } else {
         0
     };

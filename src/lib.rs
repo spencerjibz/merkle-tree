@@ -15,7 +15,7 @@ Example output:
 
                                Root
                            ┌──────────┐
-                           │    H7    │
+                           │    H7│
                            │ H(H5|H6) │
                   ┌────────┴──────────┴──────────┐
                   │                              │
@@ -53,7 +53,6 @@ Exercise 3 (Hard):
 pub mod stores;
 pub mod utils;
 use bytes::Bytes;
-use itertools::Itertools;
 use std::collections::BTreeMap;
 pub use stores::NodeStore;
 pub use utils::*;
@@ -81,13 +80,20 @@ impl<Store: NodeStore> MerkleTree<Store> {
     where
         B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
         I: IntoIterator<IntoIter = U>,
-        U: Iterator<Item = B> + Clone,
+        U: Iterator<Item = B>,
     {
         let input = input.into_iter();
         let size_hint = input.size_hint().1.unwrap_or_default();
-        let unique_leaf_count = input.clone().unique().size_hint().1.unwrap_or_default();
+        Self::from_iter(input, size_hint, store)
+    }
+    pub fn from_iter<B, I>(input: I, size_hint: usize, store: Store) -> Self
+    where
+        B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+        I: Iterator<Item = B>,
+    {
+        let unique_leaf_count = size_hint;
         let is_padded = !size_hint.is_power_of_two();
-        let (leaf_count, input) = pad_input(input);
+        let (leaf_count, input) = pad_input(input, size_hint);
         let level_count = get_level_count(leaf_count);
         let mut items_index_per_level = vec![0; level_count];
         let mut tree_cache = store;
