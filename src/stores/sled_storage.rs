@@ -25,7 +25,6 @@ impl SledStore {
         })
     }
     pub fn get_node(&self, key: impl AsRef<[u8]>) -> Option<Node> {
-        //dbg!(self.node_store.len());
         let result = self.node_store.get(key).ok()?;
         if let Some(node) = result {
             let value = bincode::deserialize(&node).ok();
@@ -36,9 +35,9 @@ impl SledStore {
 }
 impl NodeStore for SledStore {
     fn set(&mut self, key: crate::PathTrace, value: crate::Node) -> Option<crate::Node> {
-        let path: Vec<u8> = bincode::serialize(&key).ok()?;
-        let node: Vec<u8> = bincode::serialize(&value).ok()?;
-        let hash = bincode::serialize(&value.data).ok()?;
+        let path: IVec = bincode::serialize(&key).ok()?.into();
+        let node: IVec = bincode::serialize(&value).ok()?.into();
+        let hash: IVec = bincode::serialize(&value.data).ok()?.into();
         self.node_store_batch.insert(path.clone(), node);
         // skip updating this for duplicates
         if !self.hash_key_tree.contains_key(&hash).unwrap_or_default() {
@@ -87,7 +86,10 @@ impl NodeStore for SledStore {
                 .unwrap_or_default();
             let node: Node = bincode::deserialize(&value).unwrap_or_default();
 
-            let key: Vec<_> = bincode::serialize(&path_trace).ok().unwrap_or_default();
+            let key: IVec = bincode::serialize(&path_trace)
+                .ok()
+                .unwrap_or_default()
+                .into();
             let hash = bincode::serialize(&node.data).unwrap_or_default();
             if !node.from_duplicate {
                 batch_hash_path_update.insert(hash, key.clone());
@@ -148,9 +150,9 @@ pub fn create_large_input_byes(size: usize, db: &Db) -> (usize, impl Iterator<It
         .expect("failed to create tree");
     let mut batch = Batch::default();
     for i in 0..size {
-        let bytes = i.to_ne_bytes();
+        let bytes = i.to_be_bytes();
         batch.insert(&bytes, &bytes);
     }
     let _ = tree.apply_batch(batch);
-    (tree.len(), tree.iter().values().flat_map(|v| v.ok()))
+    (size, tree.iter().values().flat_map(|v| v.ok()))
 }
