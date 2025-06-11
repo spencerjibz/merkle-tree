@@ -4,16 +4,18 @@
 
 A minimal and extensible Merkle Tree implementation in Rust.
 ### Features
-- Supports both full and sparse Merkle Trees  
+- Supports both balanced and unbalanced Merkle Trees  
 - Computes Merkle root hashes from arbitrary data  
 - Generates cryptographic inclusion proofs for any node  
 - Verifies proofs efficiently against the root hash  
 - Lazy path generation for efficient proof construction  
+- Different node storage options (Sled, IndexMap, any that implement the NodeStore trait)
+- Support for incremental updates and appending to the tree;
 ### Getting Started
 ### Prerequisites
 - Rust (via [https://rustup.rs](https://rustup.rs))
 
-### Build and Run
+### Build and Run an example
 
 ```bash
 git clone https://github.com/spencerjibz/merkle-tree.git
@@ -29,6 +31,11 @@ Run the test suite with:
 cargo test
 ```
 Tests cover core functionality including tree construction, root computation, proof generation, and verification.
+### Benchmarks
+[Here](https://spencerjibz.github.io/merkle-tree) are basic benchmarks for construction, proof_generation and verification between our implementation and [merkle.rs](https://github.com/SpinResearch/merkle.rs).
+
+run ``` cargo bench``` to run the benchmarks locally.
+
 
 ### License
 MIT License. See the [LICENSE](LICENSE) file for details.
