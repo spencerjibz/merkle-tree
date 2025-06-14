@@ -1,9 +1,21 @@
 use crate::HashDirection;
+mod rocksdb_storage;
 mod sled_storage;
 use super::{Hash, Node, PathTrace};
 use indexmap::IndexMap;
+pub use rocksdb_storage::*;
 pub use sled_storage::*;
+
+#[derive(Debug, Clone, Copy)]
+pub enum StoreType {
+    Sled,
+    RocksDb,
+    IndexMap,
+}
 pub trait NodeStore {
+    fn store_type(&self) -> StoreType {
+        StoreType::IndexMap
+    }
     // add new values to the store, (this could also be scheduling a batch insert)
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node>;
     fn get(&self, key: &PathTrace) -> Option<Node>;
