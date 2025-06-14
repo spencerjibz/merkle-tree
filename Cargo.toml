@@ -17,9 +17,13 @@ bytes = { version = "1.10.1", features = ["serde"] }
 hex = "0.4.3"
 indexmap = "2.9.0"
 itertools = "0.14.0"
+rocksdb = { version = "0.23.0", default-features = false, features = [
+  "snappy",
+] }
 serde = { version = "1.0.219", features = ["derive"] }
 sha2 = "0.10.1"
 sled = { version = "0.34.7" }
+tempfile = "3.20.0"
 [profile.release]
 debug = 1
 

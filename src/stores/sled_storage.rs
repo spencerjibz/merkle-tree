@@ -34,6 +34,9 @@ impl SledStore {
     }
 }
 impl NodeStore for SledStore {
+    fn store_type(&self) -> super::StoreType {
+        super::StoreType::Sled
+    }
     fn set(&mut self, key: crate::PathTrace, value: crate::Node) -> Option<crate::Node> {
         let path: IVec = bincode::serialize(&key).ok()?.into();
         let node: IVec = bincode::serialize(&value).ok()?.into();
@@ -144,7 +147,7 @@ impl NodeStore for SledStore {
     }
 }
 
-pub fn create_large_input_byes(size: usize, db: &Db) -> (usize, impl Iterator<Item = IVec>) {
+pub fn create_large_input_byes_sled(size: usize, db: &Db) -> (usize, impl Iterator<Item = IVec>) {
     let tree = db
         .open_tree(format!("large-{size}-bytes"))
         .expect("failed to create tree");

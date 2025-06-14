@@ -105,6 +105,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
             false,
             0,
         );
+
         let padding_start = unique_leaf_count - 1;
 
         tree_cache.sort();
