@@ -1,4 +1,4 @@
-use merkle_tree::{hash_data, stores::create_large_input_byes, MerkleTree};
+use merkle_tree::{hash_data, stores::create_large_input_byes_sled, MerkleTree};
 fn main() {
     let now = std::time::Instant::now();
     /* let data = example_data(100000);
@@ -36,7 +36,7 @@ fn append_multiple_to_un_balanced_tree() {
     *
     let store = IndexMap::new();
     *  */
-    let (size, data) = create_large_input_byes(index, &db);
+    let (size, data) = create_large_input_byes_sled(index, &db);
     let mut tree = MerkleTree::from_iter(data, size, store);
     let input: Vec<_> = (80..=85).map(|d| vec![d]).collect();
     for (i, h) in input.iter().enumerate() {
