@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use merkle::MerkleTree;
 use rand::RngCore;
 use ring::digest::{Algorithm, SHA512};
-use std::hint::black_box;
+use std::{hint::black_box, time::Duration};
 
 static DIGEST: &Algorithm = &SHA512;
 use merkle_tree::MerkleTree as OurTree;
@@ -91,6 +91,10 @@ fn bench_big_rnd_tree(c: &mut Criterion) {
     let mut group = c.benchmark_group("Build Big tree");
     let mut values = vec![vec![0u8; 256]; BIG_TREE_INPUT_SIZE];
     let mut rng = rand::rng();
+    // Configuration for long-running benchmarks
+    group.measurement_time(Duration::from_secs(120));
+    group.warm_up_time(Duration::from_secs(5));
+    group.sample_size(25);
 
     for v in &mut values {
         rng.fill_bytes(v);
@@ -109,6 +113,9 @@ fn bench_big_rnd_proof_gen(c: &mut Criterion) {
     let mut values = vec![vec![0u8; 256]; BIG_TREE_INPUT_SIZE];
     let mut rng = rand::rng();
 
+    group.measurement_time(Duration::from_secs(120));
+    group.warm_up_time(Duration::from_secs(5));
+    group.sample_size(25);
     for v in &mut values {
         rng.fill_bytes(v);
     }
@@ -138,6 +145,9 @@ fn bench_big_rnd_proof_check(c: &mut Criterion) {
     let mut group = c.benchmark_group("Proof Verification for Large tree");
     let mut values = vec![vec![0u8; 256]; BIG_TREE_INPUT_SIZE];
     let mut rng = rand::rng();
+    group.measurement_time(Duration::from_secs(120));
+    group.warm_up_time(Duration::from_secs(5));
+    group.sample_size(25);
 
     for v in &mut values {
         rng.fill_bytes(v);
@@ -176,7 +186,11 @@ fn bench_big_rnd_proof_check(c: &mut Criterion) {
 }
 
 fn bench_big_rnd_iter(c: &mut Criterion) {
-    c.bench_function("MerkleTree::iter - big", |b| {
+    let mut group = c.benchmark_group("Tree from iter large for MerkleTree.rs");
+    group.measurement_time(Duration::from_secs(120));
+    group.warm_up_time(Duration::from_secs(5));
+    group.sample_size(25);
+    group.bench_function("MerkleTree::iter - big", |b| {
         let mut values = vec![vec![0u8; 256]; 160];
         let mut rng = rand::rng();
 
