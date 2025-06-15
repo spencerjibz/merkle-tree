@@ -32,6 +32,33 @@ jobs:
       name: benchmarks
       url: ${{ steps.deploy_benchmarks.outputs.page_url }}
     steps:
+      - name: Set LIBCLANG_PATH
+        run: |
+          sudo apt install -y clang llvm libclang-dev build-essential pkg-config
+          echo "🔍 Setting LIBCLANG_PATH for clang-sys dependencies..."
+          # Use the LLVM_PATH environment variable set by KyleMayes/install-llvm-action
+          echo "LLVM_PATH is: ${{ env.LLVM_PATH }}"
+
+          # On Linux, libclang.so is typically in the 'lib' subdirectory of LLVM_PATH
+          # We check if the 'lib' directory exists before setting
+          if [ -d "${{ env.LLVM_PATH }}/lib" ]; then
+            echo "LIBCLANG_PATH=${{ env.LLVM_PATH }}/lib" >> $GITHUB_ENV
+            echo "✅ LIBCLANG_PATH set to: ${{ env.LLVM_PATH }}/lib"
+          else
+            echo "⚠️ Expected lib directory not found in LLVM_PATH. Falling back to /usr/lib/x86_64-linux-gnu."
+            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            echo "❌ Verify LLVM installation path if issues persist."
+          fi
+
+          # Verification
+          echo "🔍 Verification:"
+          if [ -n "$LIBCLANG_PATH" ] && [ -d "$LIBCLANG_PATH" ]; then
+              ls -la "$LIBCLANG_PATH"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LIBCLANG_PATH."
+              echo "Current LIBCLANG_PATH: $LIBCLANG_PATH"
+          else
+              echo "Verification failed: LIBCLANG_PATH not set or directory does not exist."
+          fi
+
       - name: Checkout repository for benchmarks
         uses: actions/checkout@v4
         # Configure Git for the fetch depth needed by dtolnay/rust-toolchain
@@ -42,8 +69,7 @@ jobs:
         # Use a specific version or 'stable' for consistency
         uses: dtolnay/rust-toolchain@stable
         with:
-           toolchain: nightly
-  
+          toolchain: nightly
 
       - name: Cache Cargo dependencies
         # This step caches Rust dependencies and build artifacts
