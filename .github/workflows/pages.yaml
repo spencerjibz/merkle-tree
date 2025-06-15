@@ -69,7 +69,7 @@ jobs:
         # Use a specific version or 'stable' for consistency
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: stable
 
       - name: Cache Cargo dependencies
         # This step caches Rust dependencies and build artifacts
