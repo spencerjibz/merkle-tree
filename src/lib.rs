@@ -52,7 +52,7 @@ Exercise 3 (Hard):
  */
 pub mod stores;
 pub mod utils;
-use bytes::Bytes;
+use byteview::ByteView;
 use std::collections::BTreeMap;
 pub use stores::NodeStore;
 pub use utils::*;
@@ -157,7 +157,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         });
         // update self. root;
         if let Some(new_root) = self.tree_cache.get(&PathTrace::root()) {
-            self.root = Bytes::copy_from_slice(&new_root.data);
+            self.root = ByteView::new(&new_root.data);
         }
     }
     pub fn append<D: AsRef<[u8]>>(&mut self, data: &D) {
@@ -333,7 +333,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
         U: Iterator<Item = B> + Clone,
         B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
     {
-        let root_hash = Bytes::copy_from_slice(root_hash.as_ref());
+        let root_hash = ByteView::new(root_hash.as_ref());
         let generated_tree = Self::construct(input, store);
         generated_tree.root() == &root_hash
     }
@@ -352,7 +352,7 @@ impl<Store: NodeStore> MerkleTree<Store> {
                     }
                     hash_concat(&acc, next_hash)
                 });
-        generated == root_hash
+        &generated == root_hash
     }
 
     /// Returns a list of hashes that can be used to prove that the given data is in this tree

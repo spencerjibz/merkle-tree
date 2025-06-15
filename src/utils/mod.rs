@@ -1,10 +1,10 @@
 pub use crate::stores::NodeStore;
-use bytes::Bytes;
+use byteview::ByteView;
 use itertools::{peek_nth, Itertools};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 pub type Data = Vec<u8>;
-pub type Hash = Bytes;
+pub type Hash = ByteView;
 /// Which side to put Hash on when concatinating proof hashes
 #[repr(u8)]
 #[derive(
@@ -58,7 +58,7 @@ pub struct Node {
 }
 impl Node {
     pub fn new<I: AsRef<[u8]>>(data: I, is_left: bool) -> Self {
-        let data = Bytes::copy_from_slice(data.as_ref());
+        let data = ByteView::new(data.as_ref());
         Self {
             is_left,
             data,
@@ -151,7 +151,7 @@ impl PartialOrd for PathTrace {
 // ------------------------- UTILITY FUNCTIONS --------------------------------------------------
 pub fn hash_data<T: AsRef<[u8]>>(data: &T) -> Hash {
     let hash = sha2::Sha256::digest(data.as_ref());
-    Bytes::copy_from_slice(&hash)
+    ByteView::new(&hash)
 }
 
 pub fn hash_concat<T: AsRef<[u8]>>(h1: &T, h2: &T) -> Hash {
