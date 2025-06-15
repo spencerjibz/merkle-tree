@@ -1,78 +1,108 @@
 name: CI
 
 on:
-     push:
-          branches:
-               - main
-     pull_request:
-          branches:
-               - main
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 env:
-     CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: always
 
 jobs:
-     format:
-          runs-on: ubuntu-latest
-          steps:
-               - uses: actions/checkout@v3
-               - uses: actions-rs/toolchain@v1
-                 with:
-                      toolchain: stable
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
 
-               - run: cargo fmt --all -- --check
-     test:
-          name: lib tests and docs test
-          runs-on: ubuntu-latest
+      - run: cargo fmt --all -- --check
+  test:
+    name: lib tests and docs test
+    runs-on: ubuntu-latest
 
-          steps:
-               - uses: actions/checkout@v3
-               - uses: actions-rs/toolchain@v1
-                 with:
-                      toolchain: stable
-               - uses: actions/cache@v3
-                 with:
-                      path: |
-                           ~/.cargo/bin/
-                           ~/.cargo/registry/index/
-                           ~/.cargo/registry/cache/
-                           ~/.cargo/git/db/
-                           target/
-                      key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-               - run: cargo test -r  --all-features
+    steps:
+      - name: Setup LIBCLANG_PATH
+        run: |
+          sudo apt install -y clang llvm libclang-dev build-essential pkg-config
+          # Use the LLVM_PATH environment variable set by KyleMayes/install-llvm-action
+          echo "Setting LIBCLANG_PATH using LLVM_PATH from previous step."
+          echo "LLVM_PATH is: ${{ env.LLVM_PATH }}"
 
-     rust-clippy-analyze:
-          runs-on: ubuntu-latest
-          permissions:
-               contents: read
-               security-events: write
-               actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
-          steps:
-               - name: Checkout code
-                 uses: actions/checkout@v3
+          # On Linux, libclang.so is typically in the 'lib' subdirectory of LLVM_PATH
+          # We check if the 'lib' directory exists before setting
+          if [ -d "${{ env.LLVM_PATH }}/lib" ]; then
+            echo "LIBCLANG_PATH=${{ env.LLVM_PATH }}/lib" >> $GITHUB_ENV
+            echo "✅ LIBCLANG_PATH set to: ${{ env.LLVM_PATH }}/lib"
+          else
+            echo "⚠️ Expected lib directory not found in LLVM_PATH. Falling back to /usr/lib/x86_64-linux-gnu."
+            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            echo "❌ Verify LLVM installation path if issues persist."
+          fi
 
-               - name: Install Rust toolchain
-                 uses: actions-rs/toolchain@v1
-                 with:
-                      profile: minimal
-                      toolchain: stable
-                      components: clippy
-                      override: true
-               - uses: actions/cache@v3
-                 with:
-                      path: |
-                           ~/.cargo/bin/
-                           ~/.cargo/registry/index/
-                           ~/.cargo/registry/cache/
-                           ~/.cargo/git/db/
-                           target/
-                      key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-clippy
+          # Verification
+          echo "🔍 Verification:"
+          if [ -n "$LIBCLANG_PATH" ] && [ -d "$LIBCLANG_PATH" ]; then
+              ls -la "$LIBCLANG_PATH"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LIBCLANG_PATH."
+              echo "Current LIBCLANG_PATH: $LIBCLANG_PATH"
+          else
+              echo "Verification failed: LIBCLANG_PATH not set or directory does not exist."
+          fi
 
-               - name: Install required cargo
-                 run: cargo install clippy-sarif sarif-fmt || true
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - run: cargo nextest run --release  --all-features
 
-               - name: Run rust-clippy
-                 run: cargo clippy
-                      --all-features
-                      --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
-                 continue-on-error: true
+  rust-clippy-analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: clippy
+          override: true
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-clippy
+
+      - name: Install required cargo
+        run: cargo install clippy-sarif sarif-fmt || true
+
+      - name: Run rust-clippy
+        run: cargo clippy \
+          --all-features \
+          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
+        continue-on-error: true

@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use merkle::MerkleTree;
 use rand::RngCore;
 use ring::digest::{Algorithm, SHA512};
-use std::{hint::black_box, time::Duration};
+use std::hint::black_box;
 
 static DIGEST: &Algorithm = &SHA512;
 use merkle_tree::MerkleTree as OurTree;
