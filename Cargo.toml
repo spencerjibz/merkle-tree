@@ -34,5 +34,8 @@ merkle = '1.11.0'
 ring = "0.16.15"
 
 [[bench]]
+name = 'stores'
+harness = false
+[[bench]]
 name = 'generic'
 harness = false
