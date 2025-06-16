@@ -32,69 +32,97 @@ jobs:
       name: benchmarks
       url: ${{ steps.deploy_benchmarks.outputs.page_url }}
     steps:
-      - name: Set LIBCLANG_PATH
-        run: |
-          sudo apt install -y clang llvm libclang-dev build-essential pkg-config
-          echo "🔍 Setting LIBCLANG_PATH for clang-sys dependencies..."
-          # Use the LLVM_PATH environment variable set by KyleMayes/install-llvm-action
-          echo "LLVM_PATH is: ${{ env.LLVM_PATH }}"
-
-          # On Linux, libclang.so is typically in the 'lib' subdirectory of LLVM_PATH
-          # We check if the 'lib' directory exists before setting
-          if [ -d "${{ env.LLVM_PATH }}/lib" ]; then
-            echo "LIBCLANG_PATH=${{ env.LLVM_PATH }}/lib" >> $GITHUB_ENV
-            echo "✅ LIBCLANG_PATH set to: ${{ env.LLVM_PATH }}/lib"
-          else
-            echo "⚠️ Expected lib directory not found in LLVM_PATH. Falling back to /usr/lib/x86_64-linux-gnu."
-            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-            echo "❌ Verify LLVM installation path if issues persist."
-          fi
-
-          # Verification
-          echo "🔍 Verification:"
-          if [ -n "$LIBCLANG_PATH" ] && [ -d "$LIBCLANG_PATH" ]; then
-              ls -la "$LIBCLANG_PATH"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LIBCLANG_PATH."
-              echo "Current LIBCLANG_PATH: $LIBCLANG_PATH"
-          else
-              echo "Verification failed: LIBCLANG_PATH not set or directory does not exist."
-          fi
-
       - name: Checkout repository for benchmarks
         uses: actions/checkout@v4
-        # Configure Git for the fetch depth needed by dtolnay/rust-toolchain
         with:
-          fetch-depth: 0 # Required for cargo bench to potentially link to previous results
+          fetch-depth: 0
 
       - name: Setup Rust toolchain
-        # Use a specific version or 'stable' for consistency
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: nightly
 
-      - name: Cache Cargo dependencies
-        # This step caches Rust dependencies and build artifacts
+      # Cache Cargo dependencies and LLVM install
+      # Assign an ID to this step to check its 'cache-hit' output
+      - name: Cache Cargo dependencies and LLVM install
+        id: cache-cargo-llvm # Added ID to check cache hit/miss
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ./llvm # Added LLVM build directory to cache
+          # Modify the key to include LLVM version for better cache management
+          key: ${{ runner.os }}-cargo-llvm-19.1.0-${{ hashFiles('**/Cargo.lock') }} # Updated LLVM version in key
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-llvm-19.1.0-
+            ${{ runner.os }}-cargo- # Fallback to generic cargo cache
+
+      # Conditionally Install LLVM and Clang ONLY if cache was not a hit
+      - name: Install LLVM and Clang (version 19.1.0)
+        # Only run this step if the cache was NOT a hit for 'llvm/'
+        if: steps.cache-cargo-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "19.1.0" # Make sure this matches the version in the cache key
+
+      # This step sets LIBCLANG_PATH and RUSTFLAGS regardless of cache hit/miss
+      # It relies on LLVM_PATH being set by KyleMayes/install-llvm-action (if run)
+      # or assumes the 'llvm/' directory structure is restored by the cache.
+      - name: Set LIBCLANG_PATH and Linker Flags
+        run: |
+          echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
+
+          # Determine the LLVM lib directory path
+          # Prioritize LLVM_PATH if set (means install-llvm-action ran)
+          if [ -n "${{ env.LLVM_PATH }}" ]; then
+              LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
+              echo "Using LLVM_PATH: ${LLVM_INSTALL_DIR}"
+          # Otherwise, assume it was restored from cache in the ./llvm directory
+          elif [ -d "./llvm" ]; then
+              LLVM_INSTALL_DIR="./llvm"
+              echo "Using cached LLVM path: ${LLVM_INSTALL_DIR}"
+          else
+              echo "❌ Error: LLVM installation directory not found. This job will likely fail."
+              # Fallback for LIBCLANG_PATH, but linker will still likely fail if specific clang version is required
+              echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+              exit 1 # Fail fast if core LLVM path not found
+          fi
+
+          LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
+
+          if [ -d "$LLVM_LIB_DIR" ]; then
+            echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
+            echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
+            
+            # Preserve existing RUSTFLAGS if any, then add the new linker flag
+            CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
+            if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
+              echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            else
+              echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            fi
+            echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
+            
+            echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
+            ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
+          else
+            echo "❌ Error: LLVM lib directory ($LLVM_LIB_DIR) not found. This job will likely fail."
+            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            exit 1 # Fail fast if core LLVM path not found
+          fi
+
+          echo "Final LIBCLANG_PATH: $LIBCLANG_PATH"
+          echo "Final RUSTFLAGS: $RUSTFLAGS"
 
       - name: Run Cargo Bench (with increased memory limits)
-        # Execute the benchmark command.
-        # By default, Criterion.rs outputs HTML reports to target/criterion/
-        # Using ulimit to increase the virtual memory limit for the process
         run: |
-          ulimit -v unlimited || true # Set virtual memory limit to unlimited
-          ulimit -d unlimited || true # Set data segment size limit to unlimited
+          ulimit -v unlimited || true
+          ulimit -d unlimited || true
           cargo bench
 
       - name: Create Root Index HTML for Redirect
-        # This step creates an index.html at the root of the uploaded artifact
-        # that redirects to the actual Criterion.rs report's index.html.
         run: |
           echo '<!DOCTYPE html>' > target/criterion/index.html
           echo '<html lang="en">' >> target/criterion/index.html
@@ -109,19 +137,16 @@ jobs:
           echo '</html>' >> target/criterion/index.html
 
       - name: Setup Pages for Benchmarks
-        # Configure GitHub Pages specifically for the 'benchmarks' environment
         uses: actions/configure-pages@v5
         with:
           enablement: benchmarks
 
       - name: Upload Benchmark Artifact
-        # Upload the entire target/criterion directory to preserve relative paths
         uses: actions/upload-pages-artifact@v3
         with:
           path: target/criterion
 
       - name: Deploy Benchmarks to GitHub Pages
-        # Deploy the uploaded artifact to the GitHub Pages site for benchmarks
         id: deploy_benchmarks
         uses: actions/deploy-pages@v4
         with:
