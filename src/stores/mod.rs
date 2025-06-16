@@ -13,6 +13,7 @@ pub enum StoreType {
     Sled,
     RocksDb,
     IndexMap,
+    Fjall,
 }
 pub trait NodeStore {
     fn store_type(&self) -> StoreType {

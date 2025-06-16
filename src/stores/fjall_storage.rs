@@ -31,6 +31,9 @@ impl<'a> FjallDbStore<'a> {
 }
 
 impl NodeStore for FjallDbStore<'_> {
+    fn store_type(&self) -> super::StoreType {
+        super::StoreType::Fjall
+    }
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node> {
         let path: Vec<_> = bincode::serialize(&key).ok()?;
         let node: Vec<_> = bincode::serialize(&value).ok()?;
