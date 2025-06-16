@@ -110,9 +110,8 @@ jobs:
           echo "Final LIBCLANG_PATH: $LIBCLANG_PATH"
           echo "Final RUSTFLAGS: $RUSTFLAGS"
 
-      - name: Clean previous build artifacts
-        run: cargo clean
-      - run: cargo nextest run --release --all-features
+      - name: Run tests
+        run: cargo nextest run --release --all-features
 
   rust-clippy-analyze:
     runs-on: ubuntu-latest
