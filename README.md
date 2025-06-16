@@ -14,6 +14,7 @@ A minimal and extensible Merkle Tree implementation in Rust.
 - Extensible node storage options (implement the NodeStore trait)
 - Sled as a node storage option
 - RocksDB integration
+- Fjall integration
 - Support for incremental updates and appending to the tree;
 
 ### Getting Started
@@ -44,7 +45,7 @@ Tests cover core functionality including tree construction, root computation, pr
 
 ### Benchmarks
 
-[Here](https://spencerjibz.github.io/merkle-tree) are basic benchmarks for construction, proof_generation and verification between our implementation and [merkle.rs](https://github.com/SpinResearch/merkle.rs).
+[Here](https://spencerjibz.github.io/merkle-tree) are basic benchmarks for construction, proof_generation and verification between our implementation & [merkle.rs](https://github.com/SpinResearch/merkle.rs) and benchmarks between stores (RocksDb, Sled, IndexMap and Fjall).
 
 run ` cargo bench` to run the benchmarks locally.
 
