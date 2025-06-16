@@ -140,6 +140,7 @@ impl NodeStore for FjallDbStore<'_> {
 pub fn temporary_fjall_db() -> Keyspace {
     let temp_dir = tempfile::TempDir::new().expect("failed to create temp dir");
     Config::new(temp_dir)
+        .temporary(true)
         .open()
         .expect("failed to open temporary RocksDB")
 }
