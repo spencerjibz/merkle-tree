@@ -26,39 +26,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup LIBCLANG_PATH
-        run: |
-          sudo apt install -y clang llvm libclang-dev build-essential pkg-config
-          # Use the LLVM_PATH environment variable set by KyleMayes/install-llvm-action
-          echo "Setting LIBCLANG_PATH using LLVM_PATH from previous step."
-          echo "LLVM_PATH is: ${{ env.LLVM_PATH }}"
-
-          # On Linux, libclang.so is typically in the 'lib' subdirectory of LLVM_PATH
-          # We check if the 'lib' directory exists before setting
-          if [ -d "${{ env.LLVM_PATH }}/lib" ]; then
-            echo "LIBCLANG_PATH=${{ env.LLVM_PATH }}/lib" >> $GITHUB_ENV
-            echo "✅ LIBCLANG_PATH set to: ${{ env.LLVM_PATH }}/lib"
-          else
-            echo "⚠️ Expected lib directory not found in LLVM_PATH. Falling back to /usr/lib/x86_64-linux-gnu."
-            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-            echo "❌ Verify LLVM installation path if issues persist."
-          fi
-
-          # Verification
-          echo "🔍 Verification:"
-          if [ -n "$LIBCLANG_PATH" ] && [ -d "$LIBCLANG_PATH" ]; then
-              ls -la "$LIBCLANG_PATH"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LIBCLANG_PATH."
-              echo "Current LIBCLANG_PATH: $LIBCLANG_PATH"
-          else
-              echo "Verification failed: LIBCLANG_PATH not set or directory does not exist."
-          fi
-
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
       - uses: taiki-e/install-action@nextest
-      - uses: actions/cache@v3
+
+      # Cache Cargo dependencies and LLVM install
+      # Assign an ID to this step to check its 'cache-hit' output
+      - name: Cache Cargo dependencies and LLVM install
+        id: cache-cargo-llvm # Added ID
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -66,10 +44,75 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            # Assuming 'llvm/' is the path where KyleMayes/install-llvm-action extracts LLVM
+            # If it's './llvm' as per action docs for non-Windows, this is correct.
+            # If it's a temp path, caching might be less effective.
+            ./llvm # Added LLVM build directory to cache
+          key: ${{ runner.os }}-cargo-llvm-19.1.0-${{ hashFiles('**/Cargo.lock') }} # Updated LLVM version in key
           restore-keys: |
-            ${{ runner.os }}-cargo-
-      - run: cargo nextest run --release  --all-features
+            ${{ runner.os }}-cargo-llvm-19.1.0-
+            ${{ runner.os }}-cargo- # Fallback to generic cargo cache
+
+      # Conditionally Install LLVM and Clang ONLY if cache was not a hit
+      - name: Install LLVM and Clang (version 19.1.0)
+        # Only run this step if the cache was NOT a hit
+        if: steps.cache-cargo-llvm.outputs.cache-hit != 'true'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "19.1.0" # Make sure this matches the version in the cache key
+
+      # This step sets LIBCLANG_PATH and RUSTFLAGS regardless of cache hit/miss
+      # It relies on LLVM_PATH being set by KyleMayes/install-llvm-action (if run)
+      # or assumes the 'llvm/' directory structure is restored by the cache.
+      - name: Set LIBCLANG_PATH and Linker Flags
+        run: |
+          echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
+
+          # Determine the LLVM lib directory path
+          # Prioritize LLVM_PATH if set (means install-llvm-action ran)
+          if [ -n "${{ env.LLVM_PATH }}" ]; then
+              LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
+              echo "Using LLVM_PATH: ${LLVM_INSTALL_DIR}"
+          # Otherwise, assume it was restored from cache in the ./llvm directory
+          elif [ -d "./llvm" ]; then
+              LLVM_INSTALL_DIR="./llvm"
+              echo "Using cached LLVM path: ${LLVM_INSTALL_DIR}"
+          else
+              echo "❌ Error: LLVM installation directory not found. This job will likely fail."
+              # Fallback for LIBCLANG_PATH, but linker will still likely fail if -lclang-18 is hard requirement
+              echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+              exit 1 # Fail fast if core LLVM path not found
+          fi
+
+          LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
+
+          if [ -d "$LLVM_LIB_DIR" ]; then
+            echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
+            echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
+            
+            # Preserve existing RUSTFLAGS if any, then add the new linker flag
+            CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
+            if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
+              echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            else
+              echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            fi
+            echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
+            
+            echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
+            ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
+          else
+            echo "❌ Error: LLVM lib directory ($LLVM_LIB_DIR) not found. This job will likely fail."
+            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            exit 1 # Fail fast if core LLVM path not found
+          fi
+
+          echo "Final LIBCLANG_PATH: $LIBCLANG_PATH"
+          echo "Final RUSTFLAGS: $RUSTFLAGS"
+
+      - name: Clean previous build artifacts
+        run: cargo clean
+      - run: cargo nextest run --release --all-features
 
   rust-clippy-analyze:
     runs-on: ubuntu-latest
