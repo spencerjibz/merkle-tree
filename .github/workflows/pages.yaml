@@ -43,28 +43,84 @@ jobs:
           toolchain: nightly
 
       # Cache Cargo dependencies and LLVM install
-      # Assign an ID to this step to check its 'cache-hit' output
       - name: Cache Cargo dependencies and LLVM install
-        id: cache-cargo-llvm # Added ID to check cache hit/miss
+        id: cache-cargo-llvm # Added ID
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-            ./llvm # Added LLVM build directory to cache
-          # Modify the key to include LLVM version for better cache management
+            ./llvm # Path where KyleMayes/install-llvm-action might extract LLVM
           key: ${{ runner.os }}-cargo-llvm-19.1.0-${{ hashFiles('**/Cargo.lock') }} # Updated LLVM version in key
           restore-keys: |
             ${{ runner.os }}-cargo-llvm-19.1.0-
-            ${{ runner.os }}-cargo- # Fallback to generic cargo cache
+            ${{ runner.os }}-cargo-
 
-      # Conditionally Install LLVM and Clang ONLY if cache was not a hit
+      # New step: Check if LLVM directory exists after cache restore
+      - name: Check for cached LLVM directory
+        id: check-llvm-dir # Added ID
+        run: |
+          if [ -d "./llvm" ]; then
+            echo "status=found" >> $GITHUB_OUTPUT
+            echo "✅ ./llvm directory found."
+          else
+            echo "status=not-found" >> $GITHUB_OUTPUT
+            echo "❌ ./llvm directory not found."
+          fi
+
+      # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
       - name: Install LLVM and Clang (version 19.1.0)
-        # Only run this step if the cache was NOT a hit for 'llvm/'
+        # Only run this step if the 'llvm/' directory was not found
+        if: steps.check-llvm-dir.outputs.status == 'not-found'
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "19.1.0" # Make sure this matches the version in the cache key
+          version: "19.1.0"
+
+      # This step sets LIBCLANG_PATH and RUSTFLAGS regardless of cache hit/miss
+      - name: Set LIBCLANG_PATH and Linker Flags
+        run: |
+          echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
+
+          # Determine the LLVM lib directory path
+          # Prioritize LLVM_PATH if set (means install-llvm-action ran recently)
+          if [ -n "${{ env.LLVM_PATH }}" ]; then
+              LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
+              echo "Using LLVM_PATH from install-llvm-action: ${LLVM_INSTALL_DIR}"
+          # Otherwise, assume it was restored from cache in the ./llvm directory
+          elif [ -d "./llvm" ]; then
+              LLVM_INSTALL_DIR="./llvm"
+              echo "Using cached LLVM path: ${LLVM_INSTALL_DIR}"
+          else
+              echo "❌ Error: LLVM installation directory not found after cache or install step. This job will likely fail."
+              echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+              exit 1 
+          fi
+
+          LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
+
+          if [ -d "$LLVM_LIB_DIR" ]; then
+            echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
+            echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
+            
+            CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
+            if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
+              echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            else
+              echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
+            fi
+            echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
+            
+            echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
+            ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
+          else
+            echo "❌ Error: LLVM lib directory ($LLVM_LIB_DIR) not found. This job will likely fail."
+            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+            exit 1 
+          fi
+
+          echo "Final LIBCLANG_PATH: $LIBCLANG_PATH"
+          echo "Final RUSTFLAGS: $RUSTFLAGS"
 
       - name: Run Cargo Bench (with increased memory limits)
         run: |
