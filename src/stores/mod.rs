@@ -1,7 +1,9 @@
 use crate::HashDirection;
+mod fjall_storage;
 mod rocksdb_storage;
 mod sled_storage;
 use super::{Hash, Node, PathTrace};
+pub use fjall_storage::*;
 use indexmap::IndexMap;
 pub use rocksdb_storage::*;
 pub use sled_storage::*;

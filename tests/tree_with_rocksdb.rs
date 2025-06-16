@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod tree_with_rocksdb {
     use merkle_tree::{
         example_data, hash_data,
         stores::{temporary_rocks_db, NodeStore, RocksDb, RocksDbStore},
