@@ -69,7 +69,7 @@ pub struct MerkleTree<Store: NodeStore> {
     pub tree_cache: Store, // O(1) - path look ups, O(n) search by hash
 }
 
-impl<Store: NodeStore> MerkleTree<Store> {
+impl<Store: NodeStore + Send> MerkleTree<Store> {
     /// Gets root hash for this tree
     pub fn root(&self) -> &Hash {
         &self.root

@@ -689,6 +689,7 @@ dependencies = [
  "itertools 0.14.0",
  "merkle",
  "rand",
+ "rayon",
  "ring",
  "rocksdb",
  "serde",
