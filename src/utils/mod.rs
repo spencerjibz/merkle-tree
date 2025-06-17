@@ -3,6 +3,8 @@ use byteview::ByteView;
 use itertools::{peek_nth, Itertools};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+mod tree_construction;
+pub use tree_construction::*;
 pub type Data = Vec<u8>;
 pub type Hash = ByteView;
 /// Which side to put Hash on when concatinating proof hashes
@@ -172,72 +174,7 @@ pub fn example_data(n: usize) -> Vec<Data> {
     data
 }
 
-pub fn build_tree(
-    tree_cache: &mut impl NodeStore,
-    input: impl IntoIterator<Item = Node>,
-    items_index_per_level: &mut [usize],
-    level_count: usize,
-    is_rebuild: bool,
-    last_index: usize,
-) -> (PathTrace, Node) {
-    let mut nodes: Vec<(PathTrace, Node)> = input
-        .into_iter()
-        .enumerate()
-        .map(|(mut index, mut data)| {
-            index += last_index;
-            let hash = hash_data(&data.data);
-            let direction = HashDirection::from_index(index);
-            let path = PathTrace::new(direction, level_count, index);
-            data.data = hash;
-            (path, data)
-        })
-        .collect();
-    let leaf_count = if is_rebuild {
-        last_index + nodes.len()
-    } else {
-        nodes.len()
-    };
-
-    while nodes.len() > 1 {
-        //  reduce allocations as length of nodes to process halves at every level up.
-        let mut next_level = Vec::with_capacity(nodes.len() / 2);
-        let mut cursor = nodes.into_iter();
-        while let Some((left, node)) = cursor.next() {
-            let (right, right_node) = cursor.next().unwrap_or_else(|| (left, node.clone()));
-
-            let level = left.level - 1;
-
-            let max_index = max_index_at_level_reversed(leaf_count, level_count, level);
-            let parent_index = items_index_per_level.get_mut(level).unwrap();
-            let mut direction = HashDirection::from_index(*parent_index);
-            // when we get the root node
-            if level == 0 {
-                direction = HashDirection::Center;
-            }
-            // when rebuild, move increase the level-count
-            if level == 1 && is_rebuild {
-                direction = HashDirection::Right;
-                *parent_index = 1;
-            }
-
-            let parent_node = Node {
-                data: hash_concat(&node.data, &right_node.data),
-                is_left: false,
-                from_duplicate: node.from_duplicate,
-            };
-            let parent = PathTrace::new(direction, level, *parent_index);
-            tree_cache.set(left, node);
-            tree_cache.set(right, right_node);
-            tree_cache.set(parent, parent_node.clone());
-            *parent_index = std::cmp::min(*parent_index + 1, max_index);
-            next_level.push((parent, parent_node));
-        }
-        nodes = next_level;
-    }
-    tree_cache.trigger_batch_actions();
-    nodes.pop().unwrap_or_default()
-}
-fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) -> usize {
+pub fn max_index_at_level_reversed(leaf_count: usize, depth: usize, level: usize) -> usize {
     let shift = depth - 1 - level;
     let nodes = (leaf_count + (1 << shift) - 1) >> shift; // ceil division
     nodes.saturating_sub(1)
