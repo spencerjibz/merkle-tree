@@ -43,16 +43,20 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-            ./llvm # Path where KyleMayes/install-llvm-action might extract LLVM
+            llvm # Path where KyleMayes/install-llvm-action might extract LLVM
           key: ${{ runner.os }}-cargo-llvm-19.1.0-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-llvm-19.1.0-
             ${{ runner.os }}-cargo-
 
       # New step: Check if LLVM directory exists after cache restore
-      - name: Check for cached LLVM directory
+      # Explicitly runs ls -la ./llvm and then checks its existence.
+      - name: Check for cached LLVM directory and list contents
         id: check-llvm-dir
         run: |
+          echo "🔍 Checking for ./llvm directory and its contents..."
+          ls -la ./llvm || echo "  ./llvm directory not found or empty." # List contents, suppress error if not found
+
           if [ -d "./llvm" ]; then
             echo "status=found" >> $GITHUB_OUTPUT
             echo "✅ ./llvm directory found."
@@ -63,7 +67,7 @@ jobs:
 
       # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
       - name: Install LLVM and Clang (version 19.1.0)
-        # Only run this step if the 'llvm/' directory was not found
+        # Only run this step if the 'llvm/' directory was not found by the previous step
         if: steps.check-llvm-dir.outputs.status == 'not-found'
         uses: KyleMayes/install-llvm-action@v2
         with:
