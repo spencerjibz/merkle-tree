@@ -11,6 +11,7 @@ A minimal and extensible Merkle Tree implementation in Rust.
 - Generates cryptographic inclusion proofs for any node
 - Verifies proofs efficiently against the root hash
 - Lazy path generation for efficient proof construction
+- Parallel Tree construction 
 - Extensible node storage options (implement the NodeStore trait)
 - Sled as a node storage option
 - RocksDB integration
