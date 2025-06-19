@@ -52,7 +52,6 @@ Exercise 3 (Hard):
  */
 pub mod stores;
 pub mod utils;
-use byteview::ByteView;
 use std::collections::BTreeMap;
 pub use stores::NodeStore;
 pub use utils::*;
@@ -88,7 +87,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
     }
     pub fn from_iter<B, I>(input: I, size_hint: usize, store: Store) -> Self
     where
-        B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
+        B: AsRef<[u8]> + std::hash::Hash + Eq + Clone + Sized,
         I: Iterator<Item = B>,
     {
         let unique_leaf_count = size_hint;
@@ -157,7 +156,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         });
         // update self. root;
         if let Some(new_root) = self.tree_cache.get(&PathTrace::root()) {
-            self.root = ByteView::new(&new_root.data);
+            self.root = new_root.data;
         }
     }
     pub fn append<D: AsRef<[u8]>>(&mut self, data: &D) {
@@ -194,13 +193,13 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             self.leaf_count,
         );
         let next_root = hash_concat(self.root(), &last_node.data);
-        self.root = next_root.clone();
+        self.root = next_root;
         // increase the leaf_count
         self.leaf_count += next_needed_nodes;
         self.is_padded = true;
         let root = Node {
             data: next_root,
-            is_left: false,
+            is_leaf: false,
             from_duplicate: false,
         };
         self.tree_cache.set(PathTrace::root(), root);
@@ -233,7 +232,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         if self.compare_hashes(&first_padded, &sibling_path) {
             if let Some(mut first_padded_node) = self.tree_cache.get(&first_padded) {
                 if any_previous_contain_current_hash {
-                    first_padded_node.data = hashed_data.clone();
+                    first_padded_node.data = hashed_data;
                     first_padded_node.from_duplicate = false;
                     self.tree_cache
                         .update_value(&first_padded, first_padded_node);
@@ -243,7 +242,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         }
         // replace the sibling of the first padding_hahsh;
         if let Some(mut sibling) = self.tree_cache.get(&sibling_path) {
-            sibling.data = hashed_data.clone();
+            sibling.data = hashed_data;
             self.tree_cache.update_value(&sibling_path, sibling);
             self.tree_cache.trigger_batch_actions();
             self.cascade_update(first_padded);
@@ -252,11 +251,11 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         for next_index in (sibling_path.index..self.leaf_count).step_by(2).skip(1) {
             let next_node = PathTrace::new(HashDirection::Right, sibling_path.level, next_index);
             if let Some(mut found_right) = self.tree_cache.get(&next_node) {
-                found_right.data = hashed_data.clone();
+                found_right.data = hashed_data;
                 self.tree_cache.update_value(&next_node, found_right);
                 let left = Node {
-                    data: hashed_data.clone(),
-                    is_left: true,
+                    data: hashed_data,
+                    is_leaf: true,
                     from_duplicate: true,
                 };
                 self.tree_cache.set(next_node.get_sibling_path(), left);
@@ -299,7 +298,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 path.index,
                 self.tree_cache
                     .get(path)
-                    .map(|node| hex::encode(&node.data))
+                    .map(|node| hex::encode(node.data))
                     .unwrap_or_default()
             );
         });
@@ -333,9 +332,9 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         U: Iterator<Item = B> + Clone,
         B: AsRef<[u8]> + std::hash::Hash + Eq + Clone,
     {
-        let root_hash = ByteView::new(root_hash.as_ref());
+        let root_hash = root_hash.as_ref();
         let generated_tree = Self::construct(input, store);
-        generated_tree.root() == &root_hash
+        generated_tree.root() == root_hash
     }
 
     /// Verifies that the given data and proof_path correctly produce the given root_hash
@@ -346,8 +345,8 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 .hashes
                 .iter()
                 .fold(hashed_data, |acc, &(_, direction, ref next_hash)| {
-                    let is_left = direction == HashDirection::Left;
-                    if is_left {
+                    let is_leaf = direction == HashDirection::Left;
+                    if is_leaf {
                         return hash_concat(next_hash, &acc);
                     }
                     hash_concat(&acc, next_hash)
@@ -379,6 +378,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
 
     pub fn pretty_print(&self) {
         let mut nodes_per_level: BTreeMap<PathTrace, Vec<(PathTrace, Node)>> = BTreeMap::new();
+
         self.tree_cache.entries().for_each(|(path, node)| {
             if let Some(parent) = path.get_parent_path() {
                 let entry = nodes_per_level.entry(parent).or_default();
@@ -390,7 +390,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             if let Some(parent_hash) = self
                 .tree_cache
                 .get(&parent)
-                .map(|node| hex::encode(&node.data))
+                .map(|node| hex::encode(node.data))
             {
                 let header = if parent.level == 0 {
                     format!("Root: {}", parent_hash)
@@ -403,16 +403,16 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 println!("{}", header);
                 nodes.sort_unstable_by(|a, b| a.0.cmp(&b.0));
                 nodes.into_iter().for_each(|(path, node)| {
-                    let is_left = path.direction == HashDirection::Left;
+                    let is_leaf = path.direction == HashDirection::Left;
                     let prefix = "    ";
-                    let branch = if is_left { "├── " } else { "└── " };
+                    let branch = if is_leaf { "├── " } else { "└── " };
                     println!(
                         "{}{}{:?} {}: {}",
                         branch,
                         prefix,
                         path.direction,
                         path.index,
-                        hex::encode(&node.data)
+                        hex::encode(node.data)
                     );
                 });
             }
