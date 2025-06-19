@@ -1,12 +1,11 @@
 pub use crate::stores::NodeStore;
-use byteview::ByteView;
 use itertools::{peek_nth, Itertools};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 mod tree_construction;
 pub use tree_construction::*;
 pub type Data = Vec<u8>;
-pub type Hash = ByteView;
+pub type Hash = [u8; 32];
 /// Which side to put Hash on when concatinating proof hashes
 #[repr(u8)]
 #[derive(
@@ -52,17 +51,17 @@ impl HashDirection {
 }
 
 // Our nodes
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Node {
-    pub is_left: bool,
+    pub is_leaf: bool,
     pub data: Hash,
     pub from_duplicate: bool,
 }
 impl Node {
-    pub fn new<I: AsRef<[u8]>>(data: I, is_left: bool) -> Self {
-        let data = ByteView::new(data.as_ref());
+    pub fn new<I: AsRef<[u8]>>(data: I, is_leaf: bool) -> Self {
+        let data = hash_data(&data);
         Self {
-            is_left,
+            is_leaf,
             data,
             from_duplicate: false,
         }
@@ -153,7 +152,7 @@ impl PartialOrd for PathTrace {
 // ------------------------- UTILITY FUNCTIONS --------------------------------------------------
 pub fn hash_data<T: AsRef<[u8]>>(data: &T) -> Hash {
     let hash = sha2::Sha256::digest(data.as_ref());
-    ByteView::new(&hash)
+    hash.into()
 }
 
 pub fn hash_concat<T: AsRef<[u8]>>(h1: &T, h2: &T) -> Hash {
@@ -201,9 +200,9 @@ where
         0
     };
     length += fill_count;
-    let mut last = last.unwrap().clone();
+    let mut last = *last.unwrap();
     last.from_duplicate = true;
-    (length, input.pad_using(length, move |_| last.clone()))
+    (length, input.pad_using(length, move |_| last))
 }
 #[cfg(test)]
 mod path_trace {
