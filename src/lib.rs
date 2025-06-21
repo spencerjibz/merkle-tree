@@ -60,9 +60,9 @@ pub struct MerkleTree<Store: NodeStore> {
     root: Hash,
     is_padded: bool,
     pub leaf_count: usize,
-    level_count: usize,
+    level_count: isize,
+    lowest_level: isize,
     unique_leaf_count: usize,
-    items_index_per_level: Vec<usize>,
     padding_start: usize,
     // for faster lookup , (level, Direction, index), eg. for H2, (depthlength, Right, index)
     pub tree_cache: Store, // O(1) - path look ups, O(n) search by hash
@@ -94,23 +94,17 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let is_padded = !size_hint.is_power_of_two();
         let (leaf_count, input) = pad_input(input, size_hint);
         let level_count = get_level_count(leaf_count);
-        let mut items_index_per_level = vec![0; level_count];
         let mut tree_cache = store;
-        let (_root_path, root) = build_tree(
-            &mut tree_cache,
-            input,
-            &mut items_index_per_level,
-            level_count,
-            false,
-            0,
-        );
+        let lowest_level = 0;
+        let (_root_path, root) =
+            build_tree(&mut tree_cache, input, level_count, lowest_level, false, 0);
 
         let padding_start = unique_leaf_count - 1;
 
         tree_cache.sort();
 
         Self {
-            items_index_per_level,
+            lowest_level,
             padding_start,
             root: root.data,
             unique_leaf_count,
@@ -133,7 +127,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
 
     /// updates the hash up every level to the root.
     pub fn cascade_update(&mut self, current: PathTrace) {
-        current.generate_route().for_each(|path| {
+        current.generate_route(self.lowest_level).for_each(|path| {
             if let (Some(current_node), Some(sibling_node)) = (
                 self.tree_cache.get(&path),
                 self.tree_cache.get(&path.get_sibling_path()),
@@ -144,18 +138,19 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 } else {
                     hash_concat(&sibling_node.data, &current_node.data)
                 };
-                path.get_parent_path().and_then(|parent_path| {
-                    if let Some(mut parent_node) = self.tree_cache.get(&parent_path) {
-                        parent_node.data = next_parent_hash;
-                        self.tree_cache.update_value(&parent_path, parent_node);
-                    }
-                    None as Option<Node>
-                });
+                path.get_parent_path(self.lowest_level)
+                    .and_then(|parent_path| {
+                        if let Some(mut parent_node) = self.tree_cache.get(&parent_path) {
+                            parent_node.data = next_parent_hash;
+                            self.tree_cache.update_value(&parent_path, parent_node);
+                        }
+                        None as Option<Node>
+                    });
                 //parent_node.data = next_parent_hash;
             }
         });
         // update self. root;
-        if let Some(new_root) = self.tree_cache.get(&PathTrace::root()) {
+        if let Some(new_root) = self.tree_cache.get(&PathTrace::root(self.lowest_level)) {
             self.root = new_root.data;
         }
     }
@@ -181,14 +176,11 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         self.tree_cache.reserve(total_tree_nodes);
         self.level_count += 1;
         // set item_per_level too;
-        let mut next = vec![0];
-        next.append(&mut self.items_index_per_level);
-        self.items_index_per_level = next;
         let (_last, last_node) = build_tree(
             &mut self.tree_cache,
             input,
-            &mut self.items_index_per_level,
             self.level_count,
+            self.lowest_level,
             true,
             self.leaf_count,
         );
@@ -202,7 +194,8 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             is_leaf: false,
             from_duplicate: false,
         };
-        self.tree_cache.set(PathTrace::root(), root);
+        self.tree_cache
+            .set(PathTrace::root(self.lowest_level), root);
         self.tree_cache.trigger_batch_actions();
         self.unique_leaf_count += 1;
         self.padding_start = self.unique_leaf_count - 1;
@@ -280,7 +273,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         // numbers of items of that level is 2^level;
         // our parent is always one level up;
         path_trace
-            .get_parent_path()
+            .get_parent_path(self.lowest_level)
             .and_then(|path| self.tree_cache.get(&path).map(|node| node.data))
     }
 
@@ -312,11 +305,11 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         // faster path, fetch the path from leaf_set;
         let target_hash = hash_data(data);
         if let Some(trace) = self.tree_cache.get_key_by_hash(&target_hash) {
-            return trace.generate_route().collect();
+            return trace.generate_route(self.lowest_level).collect();
         }
         let target_hash = hash_data(data);
         if let Some(cached_path) = self.fetch_cache_pathtrace(&target_hash) {
-            return cached_path.generate_route().collect();
+            return cached_path.generate_route(self.lowest_level).collect();
         }
         vec![]
     }
@@ -361,8 +354,8 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let target_hash = hash_data(&data);
         if let Some(trace) = self.fetch_cache_pathtrace(&target_hash) {
             let hashes: Vec<_> = trace
-                .generate_route()
-                .take_while(|path| path.level >= 1) // ingnore the root
+                .generate_route(self.lowest_level)
+                .take_while(|path| path.level >= (self.lowest_level + 1)) // ingnore the root
                 .flat_map(|mut path| {
                     path = path.get_sibling_path();
                     self.tree_cache
@@ -380,7 +373,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let mut nodes_per_level: BTreeMap<PathTrace, Vec<(PathTrace, Node)>> = BTreeMap::new();
 
         self.tree_cache.entries().for_each(|(path, node)| {
-            if let Some(parent) = path.get_parent_path() {
+            if let Some(parent) = path.get_parent_path(self.lowest_level) {
                 let entry = nodes_per_level.entry(parent).or_default();
                 entry.push((path, node));
             }
