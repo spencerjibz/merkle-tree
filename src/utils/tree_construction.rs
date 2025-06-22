@@ -57,7 +57,7 @@ fn build_sequential<S: NodeStore + Send>(
                 direction = HashDirection::Center;
             }
             // when rebuild, move increase the level-count
-            if level == lowest_level + 1 && is_rebuild {
+            if level == lowest_level && is_rebuild {
                 direction = HashDirection::Right;
                 parent_index = 1;
             }
@@ -106,14 +106,15 @@ fn build_parallel(
 
     let parent_hash = hash_concat(&left_node.data, &right_node.data);
     let parent_level_in_tree = left_path.level - 1;
-    let parent_index = left_path.index / 2;
+    let mut parent_index = left_path.index / 2;
 
     let mut direction = HashDirection::from_index(parent_index);
     if parent_level_in_tree == lowest_level {
         direction = HashDirection::Center;
     }
-    if parent_level_in_tree == lowest_level + 1 && is_rebuild {
+    if parent_level_in_tree == lowest_level && is_rebuild {
         direction = HashDirection::Right;
+        parent_index = 1
     }
 
     let parent_node = Node {
