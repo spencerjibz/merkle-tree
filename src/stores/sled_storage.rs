@@ -1,6 +1,6 @@
 use super::NodeStore;
 use crate::PathTrace;
-use crate::{HashDirection, Node};
+use crate::Node;
 use sled::{Batch, Db, Result};
 use sled::{IVec, Tree};
 #[derive(Clone, Debug)]
@@ -40,11 +40,11 @@ impl NodeStore for SledStore {
     fn set(&mut self, key: crate::PathTrace, value: crate::Node) -> Option<crate::Node> {
         let path: IVec = bincode::serialize(&key).ok()?.into();
         let node: IVec = bincode::serialize(&value).ok()?.into();
-        let hash: IVec = bincode::serialize(&value.data).ok()?.into();
+        let hash = value.data;
         self.node_store_batch.insert(path.clone(), node);
         // skip updating this for duplicates
-        if !self.hash_key_tree.contains_key(&hash).unwrap_or_default() {
-            self.hash_key_tree_batch.insert(hash, path);
+        if !self.hash_key_tree.contains_key(hash).unwrap_or_default() {
+            self.hash_key_tree_batch.insert(&hash, path);
         }
         Some(value)
     }
@@ -65,45 +65,6 @@ impl NodeStore for SledStore {
 
     fn sort(&mut self) {
         // do nothing, as can't binary_search by hash_value
-    }
-
-    fn shift_nodes_up(&mut self) {
-        let cursor = self.node_store.iter().keys();
-        let mut batch_delete = sled::Batch::default();
-        let mut batch_insert = sled::Batch::default();
-        let mut batch_hash_path_update = sled::Batch::default();
-
-        for path in cursor.flatten() {
-            let mut path_trace =
-                bincode::deserialize::<PathTrace>(path.as_ref()).unwrap_or_default();
-            // mode the path_trace up by level
-            path_trace.level += 1;
-            if path_trace.direction == HashDirection::Center {
-                path_trace.direction = HashDirection::Left;
-                path_trace.index = 0;
-            }
-            let value = self
-                .node_store
-                .get(&path)
-                .unwrap_or_default()
-                .unwrap_or_default();
-            let node: Node = bincode::deserialize(&value).unwrap_or_default();
-
-            let key: IVec = bincode::serialize(&path_trace)
-                .ok()
-                .unwrap_or_default()
-                .into();
-            let hash = bincode::serialize(&node.data).unwrap_or_default();
-            if !node.from_duplicate {
-                batch_hash_path_update.insert(hash, key.clone());
-            }
-
-            batch_insert.insert(key, &value);
-            batch_delete.remove(&path);
-        }
-        let _ = self.node_store.apply_batch(batch_delete);
-        let _ = self.node_store.apply_batch(batch_insert);
-        let _ = self.hash_key_tree.apply_batch(batch_hash_path_update);
     }
 
     fn exists(&self, key: &crate::PathTrace) -> bool {
@@ -144,6 +105,21 @@ impl NodeStore for SledStore {
         self.hash_key_tree
             .apply_batch(hash_key_tree_batch)
             .expect("failed to insert")
+    }
+
+    fn remove_node(&mut self, key: PathTrace) {
+        if let Ok(key) = bincode::serialize(&key) {
+            if let Some(node) = self
+                .node_store
+                .remove(key)
+                .ok()
+                .flatten()
+                .and_then(|value| bincode::deserialize::<Node>(value.as_ref()).ok())
+            {
+                // remove it from the hash_key_tree;
+                let _ = self.hash_key_tree.remove(node.data);
+            }
+        }
     }
 }
 
