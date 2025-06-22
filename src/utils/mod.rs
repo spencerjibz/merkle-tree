@@ -108,7 +108,7 @@ impl PathTrace {
             return None;
         }
         if self.level == lowest_level + 1 {
-            return Some(Self::new(HashDirection::Center, 0, 0));
+            return Some(Self::new(HashDirection::Center, lowest_level, 0));
         }
         let level = self.level.saturating_sub(1);
         // we since we know the index of the child (item in the chunk)
@@ -250,9 +250,10 @@ mod path_trace {
     #[test]
     fn generating_routes() {
         let pt = PathTrace::new(HashDirection::Left, 3, 4);
-        let lowest_level = 0;
+        let lowest_level = -1;
         let route: Vec<_> = pt.generate_route(lowest_level).collect();
-        assert_eq!(route.len(), 4);
+        dbg!(&route);
+        assert_eq!(route.len(), 5);
         assert_eq!(route[0].level, 3);
         assert_eq!(route[1].level, 2);
         assert_eq!(route[2].level, 1);
