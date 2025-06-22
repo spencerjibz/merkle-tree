@@ -76,7 +76,9 @@ impl NodeStore for TreeCache {
             .map(|index| self.get_index(index).map(|(key, _)| *key))?
     }
     fn sort(&mut self) {
-        self.sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
+        self.sort_unstable_by(|path, node1, path2, node2| {
+            node1.data.cmp(&node2.data).then_with(|| path.cmp(path2))
+        });
     }
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)> {
         self.iter().map(|(k, v)| (*k, *v))

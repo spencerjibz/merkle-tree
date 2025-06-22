@@ -1,6 +1,6 @@
 use super::NodeStore;
-use crate::PathTrace;
 use crate::Node;
+use crate::PathTrace;
 use sled::{Batch, Db, Result};
 use sled::{IVec, Tree};
 #[derive(Clone, Debug)]
