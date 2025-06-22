@@ -1,4 +1,4 @@
-use crate::{HashDirection, Node, NodeStore, PathTrace};
+use crate::{Node, NodeStore, PathTrace};
 use fjall::{Batch, Config, Error, Keyspace, Partition, PartitionCreateOptions, Slice};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -37,13 +37,13 @@ impl NodeStore for FjallDbStore<'_> {
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node> {
         let path: Vec<_> = bincode::serialize(&key).ok()?;
         let node: Vec<_> = bincode::serialize(&value).ok()?;
-        let hash: Vec<_> = bincode::serialize(&value.data).ok()?;
+        let hash = value.data;
         self.node_store_batch
             .lock()
             .unwrap()
             .insert(&self.node_store, &path, node);
         // skip updating this for duplicates
-        if !self.hash_key_tree.contains_key(&hash).unwrap_or_default() {
+        if !self.hash_key_tree.contains_key(hash).unwrap_or_default() {
             self.hash_key_tree_batch
                 .lock()
                 .unwrap()
@@ -71,32 +71,6 @@ impl NodeStore for FjallDbStore<'_> {
 
     fn sort(&mut self) {
         // not required
-    }
-
-    fn shift_nodes_up(&mut self) {
-        let mut batch = self.db.batch();
-        let mut delete_batch = self.db.batch();
-        let mut hash_key_batch = self.db.batch();
-        for (mut path_trace, node) in self.entries() {
-            let old_key = path_trace;
-            path_trace.level += 1;
-            if path_trace.direction == HashDirection::Center {
-                path_trace.direction = HashDirection::Left;
-                path_trace.index = 0;
-            }
-            let key: Vec<u8> = bincode::serialize(&path_trace).unwrap();
-            let old_key: Vec<u8> = bincode::serialize(&old_key).unwrap();
-            let hash: Vec<u8> = bincode::serialize(&node.data).unwrap();
-            let node_bytes: Vec<u8> = bincode::serialize(&node).unwrap();
-            if !node.from_duplicate {
-                hash_key_batch.insert(&self.hash_key_tree, &hash, &key);
-            }
-            batch.insert(&self.node_store, &key, node_bytes);
-            delete_batch.remove(&self.node_store, &old_key);
-        }
-        let _ = delete_batch.commit();
-        let _ = batch.commit();
-        let _ = hash_key_batch.commit();
     }
 
     fn exists(&self, key: &PathTrace) -> bool {
@@ -135,6 +109,18 @@ impl NodeStore for FjallDbStore<'_> {
         );
         node_store_batch.commit().expect("failed to insert");
         hash_key_tree_batch.commit().expect("failed to insert")
+    }
+
+    fn remove_node(&mut self, key: PathTrace) {
+        if let Ok(key_v) = bincode::serialize(&key) {
+            if let Some(node) = self.get(&key) {
+                if self.node_store.remove(key_v).is_ok() {
+                    self.hash_key_tree
+                        .remove(node.data)
+                        .expect("fjall failed to remove")
+                }
+            }
+        }
     }
 }
 pub fn temporary_fjall_db() -> Keyspace {

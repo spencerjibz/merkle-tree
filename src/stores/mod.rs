@@ -5,9 +5,9 @@ mod sled_storage;
 use super::{Hash, Node, PathTrace};
 pub use fjall_storage::*;
 use indexmap::IndexMap;
+use itertools::Itertools;
 pub use rocksdb_storage::*;
 pub use sled_storage::*;
-
 #[derive(Debug, Clone, Copy)]
 pub enum StoreType {
     Sled,
@@ -19,19 +19,33 @@ pub trait NodeStore {
     fn store_type(&self) -> StoreType {
         StoreType::IndexMap
     }
-    // add new values to the store, (this could also be scheduling a batch insert)
+    /// change the direction of the current root from (level, Center, 0) to (level, left, 0)
+    fn shift_root_to_left(&mut self, lowest_level: isize) {
+        let mut root_path = PathTrace::root(lowest_level);
+        if let Some(root_node) = self.get(&root_path) {
+            self.remove_node(root_path);
+            root_path.direction = HashDirection::Left;
+            let _ = self.set(root_path, root_node);
+        }
+    }
+    /// add new values to the store, (this could also be scheduling a batch insert)
     fn set(&mut self, key: PathTrace, value: Node) -> Option<Node>;
     fn get(&self, key: &PathTrace) -> Option<Node>;
     fn get_key_by_hash(&self, hash: &Hash) -> Option<PathTrace>;
     /// sort the items by value, for store that support binary_search by value
     fn sort(&mut self);
-    /// move all the nodes up by level (expensive for some stores)
-    fn shift_nodes_up(&mut self);
     fn exists(&self, key: &PathTrace) -> bool;
     fn reserve(&mut self, items: usize);
     fn update_value(&mut self, key: &PathTrace, next_value: Node);
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)>;
     fn trigger_batch_actions(&mut self);
+    fn remove_node(&mut self, key: PathTrace);
+    fn unique_leaf_count(&self) -> usize {
+        self.entries()
+            .filter(|pairs| pairs.1.is_leaf)
+            .unique_by(|pairs| pairs.1.data)
+            .count()
+    }
 }
 
 // Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
@@ -64,24 +78,16 @@ impl NodeStore for TreeCache {
     fn sort(&mut self) {
         self.sort_unstable_by(|_, node1, _, node2| node1.data.cmp(&node2.data));
     }
-    fn shift_nodes_up(&mut self) {
-        let temp: Vec<_> = self.drain(..).collect();
-        temp.into_iter().for_each(|(mut key, value)| {
-            key.level += 1;
-            if key.direction == HashDirection::Center {
-                key.direction = HashDirection::Left;
-                key.index = 0;
-            }
-            self.set(key, value);
-        });
-    }
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)> {
-        self.iter().map(|(k, v)| (*k, v.clone()))
+        self.iter().map(|(k, v)| (*k, *v))
     }
 
     fn update_value(&mut self, key: &PathTrace, next_value: Node) {
         if let Some(current) = self.get_mut(key) {
             *current = next_value
         }
+    }
+    fn remove_node(&mut self, key: PathTrace) {
+        let _ = self.shift_remove(&key);
     }
 }

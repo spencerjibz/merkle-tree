@@ -90,7 +90,6 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         B: AsRef<[u8]> + std::hash::Hash + Eq + Clone + Sized,
         I: Iterator<Item = B>,
     {
-        let unique_leaf_count = size_hint;
         let is_padded = !size_hint.is_power_of_two();
         let (leaf_count, input) = pad_input(input, size_hint);
         let level_count = get_level_count(leaf_count);
@@ -99,7 +98,8 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let (_root_path, root) =
             build_tree(&mut tree_cache, input, level_count, lowest_level, false, 0);
 
-        let padding_start = unique_leaf_count - 1;
+        let unique_leaf_count = tree_cache.unique_leaf_count();
+        let padding_start = unique_leaf_count.saturating_sub(1);
 
         tree_cache.sort();
 
@@ -154,6 +154,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             self.root = new_root.data;
         }
     }
+
     pub fn append<D: AsRef<[u8]>>(&mut self, data: &D) {
         if !self.is_padded {
             self.expand_tree(data);
@@ -171,11 +172,9 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let node = Node::new(data, true);
         let input = std::iter::repeat_n(node, next_needed_nodes);
         let total_tree_nodes = 2 * next_needed_nodes - 1;
-        // move every path up by level up
-        self.tree_cache.shift_nodes_up();
+        // shift_root_to_left
+        self.tree_cache.shift_root_to_left(self.lowest_level);
         self.tree_cache.reserve(total_tree_nodes);
-        self.level_count += 1;
-        // set item_per_level too;
         let (_last, last_node) = build_tree(
             &mut self.tree_cache,
             input,
@@ -186,14 +185,13 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         );
         let next_root = hash_concat(self.root(), &last_node.data);
         self.root = next_root;
-        // increase the leaf_count
         self.leaf_count += next_needed_nodes;
-        self.is_padded = true;
         let root = Node {
             data: next_root,
             is_leaf: false,
             from_duplicate: false,
         };
+        self.lowest_level -= 1;
         self.tree_cache
             .set(PathTrace::root(self.lowest_level), root);
         self.tree_cache.trigger_batch_actions();
@@ -215,7 +213,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         }
         let sibling_path = first_padded.get_sibling_path();
         // if both the current and sibling are the same; and previous contains current,
-        // this is a complete dupliate pair, we need to replace it;
+        // this is a complete dupliate pair, we need to replace both;
         let mut previous = first_padded;
         previous.index -= 2;
 
@@ -257,13 +255,12 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         }
         self.tree_cache.trigger_batch_actions();
         self.unique_leaf_count += 1;
-        self.is_padded = !self.unique_leaf_count.is_power_of_two();
-
         self.padding_start = if self.is_padded {
-            std::cmp::min(self.padding_start + 2, self.unique_leaf_count - 1)
+            std::cmp::min(self.padding_start + 2, self.unique_leaf_count)
         } else {
             self.unique_leaf_count - 1
         };
+        self.is_padded = !self.unique_leaf_count.is_power_of_two();
     }
     pub fn compare_hashes(&self, left: &PathTrace, right: &PathTrace) -> bool {
         self.tree_cache.get(left).map(|node| node.data)
@@ -385,7 +382,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 .get(&parent)
                 .map(|node| hex::encode(node.data))
             {
-                let header = if parent.level == 0 {
+                let header = if parent.level == self.lowest_level {
                     format!("Root: {}", parent_hash)
                 } else {
                     format!(

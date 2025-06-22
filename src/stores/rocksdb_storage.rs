@@ -1,5 +1,5 @@
 use super::NodeStore;
-use crate::{HashDirection, Node, PathTrace};
+use crate::{Node, PathTrace};
 use rocksdb::{
     BoundColumnFamily, DBWithThreadMode, Error, IteratorMode, MultiThreaded, Options, ReadOptions,
     WriteBatch, WriteOptions,
@@ -73,35 +73,6 @@ impl NodeStore for RocksDbStore<'_> {
         // only needed for a  binary_search_hash
     }
 
-    fn shift_nodes_up(&mut self) {
-        let mut batch = WriteBatch::default();
-        let mut delete_batch = WriteBatch::default();
-        let mut hash_key_batch = WriteBatch::default();
-        for (mut path_trace, node) in self.entries() {
-            let old_key = path_trace;
-            path_trace.level += 1;
-            if path_trace.direction == HashDirection::Center {
-                path_trace.direction = HashDirection::Left;
-                path_trace.index = 0;
-            }
-            let key: Vec<u8> = bincode::serialize(&path_trace).unwrap();
-            let old_key: Vec<u8> = bincode::serialize(&old_key).unwrap();
-            let hash: Vec<u8> = bincode::serialize(&node.data).unwrap();
-            let node_bytes: Vec<u8> = bincode::serialize(&node).unwrap();
-            if !node.from_duplicate {
-                hash_key_batch.put_cf(&self.cf_hash_key_store, &hash, &key);
-            }
-            batch.put_cf(&self.cf_node_store, &key, node_bytes);
-            delete_batch.delete_cf(&self.cf_node_store, &old_key);
-        }
-        let mut opts = WriteOptions::default();
-        opts.set_sync(false);
-        opts.disable_wal(true);
-        let _ = self.db.write_opt(delete_batch, &opts);
-        let _ = self.db.write_opt(batch, &opts);
-        let _ = self.db.write_opt(hash_key_batch, &opts);
-    }
-
     fn exists(&self, key: &PathTrace) -> bool {
         let key: Vec<u8> = bincode::serialize(&key).unwrap();
         self.db.key_may_exist_cf(&self.cf_node_store, &key)
@@ -147,6 +118,18 @@ impl NodeStore for RocksDbStore<'_> {
         let hash_key_tree_batch = std::mem::take(&mut *hash_key_tree_batch);
         let _ = self.db.write_opt(node_store_batch, &opts);
         let _ = self.db.write_opt(hash_key_tree_batch, &opts);
+    }
+
+    fn remove_node(&mut self, key: PathTrace) {
+        if let Ok(key_v) = bincode::serialize(&key) {
+            if let Some(node) = self.get(&key) {
+                if self.db.delete_cf(&self.cf_node_store, key_v).is_ok() {
+                    //remove it from hash_key_store
+                    let hash = node.data;
+                    let _ = self.db.delete_cf(&self.cf_hash_key_store, hash);
+                }
+            }
+        }
     }
 }
 
