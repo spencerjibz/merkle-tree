@@ -63,6 +63,14 @@ jobs:
         with:
           path: ./llvm
           key: llvm-19.0
+            # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
+      - name: Install LLVM and Clang (version 19.1.0)
+        # Only run this step if the 'llvm/' directory was not found by the previous step
+        if: steps.check-llvm-dir.outputs.status == 'not-found'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "19.1.0"
+
       - name: Set LIBCLANG_PATH and Linker Flags (with Absolute Paths)
         run: |
           echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
