@@ -63,41 +63,40 @@ jobs:
         with:
           path: ./llvm
           key: llvm-19.0
-
-      # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
-      - name: Install LLVM and Clang (version 19.1.0)
-        # Only run this step if the 'llvm/' directory was not found by the previous step
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "19.1.0"
-      # New step: Check if LLVM directory exists after cache restore
-
-      # This step sets LIBCLANG_PATH and RUSTFLAGS regardless of cache hit/miss
-      - name: Set LIBCLANG_PATH and Linker Flags
+      - name: Set LIBCLANG_PATH and Linker Flags (with Absolute Paths)
         run: |
           echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
-
+          
           # Determine the LLVM lib directory path
+          LLVM_INSTALL_DIR="" # Initialize to empty
+          
           # Prioritize LLVM_PATH if set (means install-llvm-action ran recently)
           if [ -n "${{ env.LLVM_PATH }}" ]; then
               LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
               echo "Using LLVM_PATH from install-llvm-action: ${LLVM_INSTALL_DIR}"
           # Otherwise, assume it was restored from cache in the ./llvm directory
           elif [ -d "./llvm" ]; then
-              LLVM_INSTALL_DIR="./llvm"
-              echo "Using cached LLVM path: ${LLVM_INSTALL_DIR}"
+              # Convert the relative path to an absolute path using 'pwd -P'
+              # GITHUB_WORKSPACE is the absolute path to the repository root
+              LLVM_INSTALL_DIR="${GITHUB_WORKSPACE}/llvm"
+              echo "Using cached LLVM path (absolute): ${LLVM_INSTALL_DIR}"
           else
               echo "❌ Error: LLVM installation directory not found after cache or install step. This job will likely fail."
               echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-              exit 1 
+              exit 1
           fi
-
+          
+          # Ensure LLVM_INSTALL_DIR is now an absolute path for consistency
+          # (This step is mostly for clarity, as the above logic already ensures it)
+          # If LLVM_PATH was already absolute, it remains so.
+          # If it was ./llvm, it's now converted to absolute.
+          
           LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
-
+          
           if [ -d "$LLVM_LIB_DIR" ]; then
             echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
             echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
-            
+          
             CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
             if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
               echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
@@ -105,18 +104,18 @@ jobs:
               echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
             fi
             echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
-            
+          
             echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
             ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
           else
             echo "❌ Error: LLVM lib directory ($LLVM_LIB_DIR) not found. This job will likely fail."
+            # Provide a fallback for LIBCLANG_PATH even if the main path isn't found
             echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-            exit 1 
+            exit 1
           fi
-
-          echo "Final LIBCLANG_PATH: $LIBCLANG_PATH"
-          echo "Final RUSTFLAGS: $RUSTFLAGS"
-
+          
+          echo "Final LIBCLANG_PATH: ${LIBCLANG_PATH:-'Not Set Yet (check logs above for actual value)'}"
+          echo "Final RUSTFLAGS: ${RUSTFLAGS:-'Not Set Yet (check logs above for actual value)'}"
       - name: Run Cargo Bench (with increased memory limits)
         run: |
           ulimit -v unlimited || true
