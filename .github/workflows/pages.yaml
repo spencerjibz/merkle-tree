@@ -63,6 +63,21 @@ jobs:
         with:
           path: ./llvm
           key: llvm-19.0
+
+      - name: Check for cached LLVM directory and list contents
+        id: check-llvm-dir
+        run: |
+          echo "🔍 Checking for ./llvm directory and its contents..."
+          ls -la ./llvm || echo "  ./llvm directory not found or empty." # List contents, suppress error if not found
+
+          if [ -d "./llvm" ]; then
+            echo "status=found" >> $GITHUB_OUTPUT
+            echo "✅ ./llvm directory found."
+          else
+            echo "status=not-found" >> $GITHUB_OUTPUT
+            echo "❌ ./llvm directory not found."
+          fi
+      # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
             # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
       - name: Install LLVM and Clang (version 19.1.0)
         # Only run this step if the 'llvm/' directory was not found by the previous step
