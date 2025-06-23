@@ -18,3 +18,5 @@ target/
 .bacon*
 # ignore profiling files
 profile*
+# ingore dhat-rs results
+dhat*
