@@ -43,120 +43,29 @@ jobs:
           toolchain: nightly
 
       # Cache Cargo dependencies and LLVM install
+      # Assign an ID to this step to check its 'cache-hit' output
       - name: Cache Cargo dependencies and LLVM install
-        id: cache-cargo-llvm # Added ID
+        id: cache-cargo-llvm # Added ID to check cache hit/miss
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/
-            llvm/ # Path where KyleMayes/install-llvm-action might extract LLVM
+            target
+            ./llvm # Added LLVM build directory to cache
+          # Modify the key to include LLVM version for better cache management
           key: ${{ runner.os }}-cargo-llvm-19.1.0-${{ hashFiles('**/Cargo.lock') }} # Updated LLVM version in key
           restore-keys: |
             ${{ runner.os }}-cargo-llvm-19.1.0-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo- # Fallback to generic cargo cache
 
-      - name: Cache LLVM and Clang build
-        id: cached-llvm
-        uses: actions/cache@v3
-        with:
-          path: ./llvm
-          key: llvm-19.0
-
-      -  name: Check for LLVM cache with libclang.so
-         id: check_llvm_cache
-         run: |
-            echo "🔍 Checking for ./llvm directory and its contents..."
-        
-            # List contents of ./llvm and ./llvm/lib for debugging/verification
-            echo "Contents of ./llvm:"
-            ls -la ./llvm 2>/dev/null || echo "  ./llvm directory not found or empty."
-            echo ""
-            echo "Contents of ./llvm/lib:"
-            ls -la ./llvm/lib 2>/dev/null || echo "  ./llvm/lib directory not found or empty."
-            echo ""
-        
-            # Check if ./llvm directory exists
-            if [ -d "./llvm" ]; then
-              echo "✅ ./llvm directory found."
-        
-              # Now, check if libclang.so* exists within ./llvm/lib
-              # Using find for robust wildcard matching and to exit early
-              if find "./llvm/lib" -maxdepth 1 -name "libclang.so*" -print -quit | grep -q .; then
-                echo "✅ libclang.so* found within ./llvm/lib."
-                echo "status=found" >> $GITHUB_OUTPUT
-              else
-                echo "❌ libclang.so* not found within ./llvm/lib."
-                echo "status=not-found" >> $GITHUB_OUTPUT
-              fi
-            else
-              echo "❌ ./llvm directory not found."
-              echo "status=not-found" >> $GITHUB_OUTPUT
-            fi
-             echo "Detection complete. Status: ${{ steps.check_llvm_cache.outputs.status }}"
-      # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
-            # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
+      # Conditionally Install LLVM and Clang ONLY if cache was not a hit
       - name: Install LLVM and Clang (version 19.1.0)
-        # Only run this step if the 'llvm/' directory was not found by the previous step
-        if: steps.check-llvm-dir.outputs.status == 'not-found'
+        # Only run this step if the cache was NOT a hit for 'llvm/'
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "19.1.0"
+          version: "19.1.0" # Make sure this matches the version in the cache key
 
-      - name: Set LIBCLANG_PATH and Linker Flags (with Absolute Paths)
-        run: |
-          echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
-          
-          # Determine the LLVM lib directory path
-          LLVM_INSTALL_DIR="" # Initialize to empty
-          
-          # Prioritize LLVM_PATH if set (means install-llvm-action ran recently)
-          if [ -n "${{ env.LLVM_PATH }}" ]; then
-              LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
-              echo "Using LLVM_PATH from install-llvm-action: ${LLVM_INSTALL_DIR}"
-          # Otherwise, assume it was restored from cache in the ./llvm directory
-          elif [ -d "./llvm" ]; then
-              # Convert the relative path to an absolute path using 'pwd -P'
-              # GITHUB_WORKSPACE is the absolute path to the repository root
-              LLVM_INSTALL_DIR="${GITHUB_WORKSPACE}/llvm"
-              echo "Using cached LLVM path (absolute): ${LLVM_INSTALL_DIR}"
-          else
-              echo "❌ Error: LLVM installation directory not found after cache or install step. This job will likely fail."
-              echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-              exit 1
-          fi
-          
-          # Ensure LLVM_INSTALL_DIR is now an absolute path for consistency
-          # (This step is mostly for clarity, as the above logic already ensures it)
-          # If LLVM_PATH was already absolute, it remains so.
-          # If it was ./llvm, it's now converted to absolute.
-          
-          LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
-          
-          if [ -d "$LLVM_LIB_DIR" ]; then
-            echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
-            echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
-          
-            CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
-            if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
-              echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
-            else
-              echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
-            fi
-            echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
-          
-            echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
-            ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
-          else
-            echo "❌ Error: LLVM lib directory ($LLVM_LIB_DIR) not found. This job will likely fail."
-            # Provide a fallback for LIBCLANG_PATH even if the main path isn't found
-            echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-            exit 1
-          fi
-          
-          echo "Final LIBCLANG_PATH: ${LIBCLANG_PATH:-'Not Set Yet (check logs above for actual value)'}"
-          echo "Final RUSTFLAGS: ${RUSTFLAGS:-'Not Set Yet (check logs above for actual value)'}"
       - name: Run Cargo Bench (with increased memory limits)
         run: |
           ulimit -v unlimited || true
