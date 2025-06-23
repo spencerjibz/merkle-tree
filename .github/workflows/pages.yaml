@@ -64,19 +64,37 @@ jobs:
           path: ./llvm
           key: llvm-19.0
 
-      - name: Check for cached LLVM directory and list contents
-        id: check-llvm-dir
-        run: |
-          echo "🔍 Checking for ./llvm directory and its contents..."
-          ls -la ./llvm || echo "  ./llvm directory not found or empty." # List contents, suppress error if not found
-
-          if [ -d "./llvm" ]; then
-            echo "status=found" >> $GITHUB_OUTPUT
-            echo "✅ ./llvm directory found."
-          else
-            echo "status=not-found" >> $GITHUB_OUTPUT
-            echo "❌ ./llvm directory not found."
-          fi
+      -  name: Check for LLVM cache with libclang.so
+         id: check_llvm_cache
+         run: |
+            echo "🔍 Checking for ./llvm directory and its contents..."
+        
+            # List contents of ./llvm and ./llvm/lib for debugging/verification
+            echo "Contents of ./llvm:"
+            ls -la ./llvm 2>/dev/null || echo "  ./llvm directory not found or empty."
+            echo ""
+            echo "Contents of ./llvm/lib:"
+            ls -la ./llvm/lib 2>/dev/null || echo "  ./llvm/lib directory not found or empty."
+            echo ""
+        
+            # Check if ./llvm directory exists
+            if [ -d "./llvm" ]; then
+              echo "✅ ./llvm directory found."
+        
+              # Now, check if libclang.so* exists within ./llvm/lib
+              # Using find for robust wildcard matching and to exit early
+              if find "./llvm/lib" -maxdepth 1 -name "libclang.so*" -print -quit | grep -q .; then
+                echo "✅ libclang.so* found within ./llvm/lib."
+                echo "status=found" >> $GITHUB_OUTPUT
+              else
+                echo "❌ libclang.so* not found within ./llvm/lib."
+                echo "status=not-found" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "❌ ./llvm directory not found."
+              echo "status=not-found" >> $GITHUB_OUTPUT
+            fi
+             echo "Detection complete. Status: ${{ steps.check_llvm_cache.outputs.status }}"
       # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
             # Conditionally Install LLVM and Clang ONLY if ./llvm was not found
       - name: Install LLVM and Clang (version 19.1.0)
