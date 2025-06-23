@@ -14,6 +14,7 @@ path = "./bin/main.rs"
 [dependencies]
 bincode = { version = "1.3.3", default-features = false }
 crossbeam-queue = "0.3.12"
+dhat = { version = "0.3.3", default-features = false, optional = true }
 fjall = { version = "2.11.0" }
 hex = "0.4.3"
 indexmap = "2.9.0"
@@ -41,3 +42,5 @@ harness = false
 [[bench]]
 name = 'generic'
 harness = false
+[features]
+dhat-heap = ["dep:dhat"]
