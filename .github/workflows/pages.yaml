@@ -70,7 +70,7 @@ jobs:
         run: |
           ulimit -v unlimited || true
           ulimit -d unlimited || true
-          cargo bench
+          cargo bench --all-features
 
       - name: Create Root Index HTML for Redirect
         run: |

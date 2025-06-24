@@ -82,10 +82,10 @@ jobs:
       - name: Set LIBCLANG_PATH and Linker Flags (with Absolute Paths)
         run: |
           echo "🔍 Setting LIBCLANG_PATH and RUSTFLAGS for linker..."
-          
+
           # Determine the LLVM lib directory path
           LLVM_INSTALL_DIR="" # Initialize to empty
-          
+
           # Prioritize LLVM_PATH if set (means install-llvm-action ran recently)
           if [ -n "${{ env.LLVM_PATH }}" ]; then
               LLVM_INSTALL_DIR="${{ env.LLVM_PATH }}"
@@ -101,18 +101,18 @@ jobs:
               echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
               exit 1
           fi
-          
+
           # Ensure LLVM_INSTALL_DIR is now an absolute path for consistency
           # (This step is mostly for clarity, as the above logic already ensures it)
           # If LLVM_PATH was already absolute, it remains so.
           # If it was ./llvm, it's now converted to absolute.
-          
+
           LLVM_LIB_DIR="${LLVM_INSTALL_DIR}/lib"
-          
+
           if [ -d "$LLVM_LIB_DIR" ]; then
             echo "LIBCLANG_PATH=$LLVM_LIB_DIR" >> $GITHUB_ENV
             echo "✅ LIBCLANG_PATH set to: $LLVM_LIB_DIR"
-          
+
             CURRENT_RUSTFLAGS="${{ env.RUSTFLAGS }}"
             if [[ -z "$CURRENT_RUSTFLAGS" ]]; then
               echo "RUSTFLAGS=-L $LLVM_LIB_DIR" >> $GITHUB_ENV
@@ -120,7 +120,7 @@ jobs:
               echo "RUSTFLAGS=$CURRENT_RUSTFLAGS -L $LLVM_LIB_DIR" >> $GITHUB_ENV
             fi
             echo "✅ RUSTFLAGS modified to include -L $LLVM_LIB_DIR"
-          
+
             echo "🔍 Verification: Listing libclang files in $LLVM_LIB_DIR"
             ls -la "$LLVM_LIB_DIR"/libclang* 2>/dev/null || echo "No libclang.so* files found in $LLVM_LIB_DIR."
           else
@@ -129,7 +129,7 @@ jobs:
             echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
             exit 1
           fi
-          
+
           echo "Final LIBCLANG_PATH: ${LIBCLANG_PATH:-'Not Set Yet (check logs above for actual value)'}"
           echo "Final RUSTFLAGS: ${RUSTFLAGS:-'Not Set Yet (check logs above for actual value)'}"
       - name: Clean previous build artifacts (removed `cargo clean`)
@@ -168,7 +168,8 @@ jobs:
         run: cargo install clippy-sarif sarif-fmt || true
 
       - name: Run rust-clippy
-        run: cargo clippy \
+        run: |
+          cargo clippy 
           --all-features \
           --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
         continue-on-error: true
