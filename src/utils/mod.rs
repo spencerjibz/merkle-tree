@@ -196,8 +196,13 @@ where
     let mut length = size_hint;
     assert!(!length > 1, "can't support less than 2 inputs");
     let input = input.map(|data| Node::new(data, true));
-    let mut input = peek_nth(input);
-    let last = input.peek_nth(length.saturating_sub(1));
+    let mut input = input.peekable();
+    let mut current = 0;
+    let mut last: Option<Node> = None;
+    while current < length {
+        last = input.peek().cloned();
+        current += 1;
+    }
 
     let fill_count = if !length.is_power_of_two() {
         length.next_power_of_two().saturating_sub(length)
@@ -205,7 +210,7 @@ where
         0
     };
     length += fill_count;
-    let mut last = *last.unwrap();
+    let mut last = last.unwrap();
     last.from_duplicate = true;
     (length, input.pad_using(length, move |_| last))
 }
