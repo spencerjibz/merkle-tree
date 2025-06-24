@@ -7,7 +7,9 @@ pub fn build_tree<S: NodeStore + Send>(
     lowest_level: isize,
     is_rebuild: bool,
     last_index: usize,
-) -> (PathTrace, Node) {
+) -> (PathTrace, Node, usize) {
+    let mut previous: Option<Node> = None;
+    let mut unique_count = 1;
     let nodes: Vec<(PathTrace, Node)> = input
         .into_iter()
         .enumerate()
@@ -16,6 +18,12 @@ pub fn build_tree<S: NodeStore + Send>(
             let direction = HashDirection::from_index(index);
             let path = PathTrace::new(direction, level_count, index);
 
+            if let Some(prev) = previous {
+                if prev.data != data.data {
+                    unique_count += 1;
+                }
+            }
+            previous.replace(data);
             (path, data)
         })
         .collect();
@@ -29,10 +37,11 @@ pub fn build_tree<S: NodeStore + Send>(
         }
         tree_cache.trigger_batch_actions();
 
-        return result;
+        return (result.0, result.1, unique_count);
     }
 
-    build_sequential(tree_cache, nodes, lowest_level, is_rebuild)
+    let result = build_sequential(tree_cache, nodes, lowest_level, is_rebuild);
+    (result.0, result.1, unique_count)
 }
 // build the tree  sequentiallly
 fn build_sequential<S: NodeStore + Send>(

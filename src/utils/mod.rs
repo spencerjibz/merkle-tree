@@ -38,7 +38,7 @@ impl HashDirection {
     pub fn next_node_index(&self, index: usize) -> usize {
         match self {
             HashDirection::Left => index + 1,
-            HashDirection::Right => index - 1,
+            HashDirection::Right => index.saturating_sub(1),
             HashDirection::Center => index,
         }
     }
