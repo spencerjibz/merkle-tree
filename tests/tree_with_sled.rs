@@ -1,3 +1,4 @@
+#[cfg(feature = "sled")]
 #[cfg(test)]
 mod tree_with_sled_store {
     use merkle_tree::{
