@@ -20,3 +20,5 @@ target/
 profile*
 # ingore dhat-rs results
 dhat*
+# ingnore heaptrack files
+heaptrack*
