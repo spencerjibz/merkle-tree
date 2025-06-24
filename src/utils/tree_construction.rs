@@ -10,28 +10,24 @@ pub fn build_tree<S: NodeStore + Send>(
 ) -> (PathTrace, Node, usize) {
     let mut previous: Option<Node> = None;
     let mut unique_count = 1;
-    let nodes: Vec<(PathTrace, Node)> = input
-        .into_iter()
-        .enumerate()
-        .map(|(mut index, data)| {
-            index += last_index;
-            let direction = HashDirection::from_index(index);
-            let path = PathTrace::new(direction, level_count, index);
+    let nodes = SegQueue::new();
+    input.into_iter().enumerate().for_each(|(mut index, data)| {
+        index += last_index;
+        let direction = HashDirection::from_index(index);
+        let path = PathTrace::new(direction, level_count, index);
 
-            if let Some(prev) = previous {
-                if prev.data != data.data {
-                    unique_count += 1;
-                }
+        if let Some(prev) = previous {
+            if prev.data != data.data {
+                unique_count += 1;
             }
-            previous.replace(data);
-            (path, data)
-        })
-        .collect();
+        }
+        previous.replace(data);
+        nodes.push((path, data));
+    });
     let parallelize = level_count > 14;
     if parallelize {
         let generated: SegQueue<(PathTrace, Node)> = SegQueue::new();
-        let result = build_parallel(&nodes, &generated, lowest_level, is_rebuild);
-        drop(nodes);
+        let result = build_parallel(nodes, &generated, lowest_level, is_rebuild);
         for (path, node) in generated {
             tree_cache.set(path, node);
         }
@@ -46,13 +42,13 @@ pub fn build_tree<S: NodeStore + Send>(
 // build the tree  sequentiallly
 fn build_sequential<S: NodeStore + Send>(
     tree_cache: &mut S,
-    mut nodes: Vec<(PathTrace, Node)>,
+    mut nodes: SegQueue<(PathTrace, Node)>,
     lowest_level: isize,
     is_rebuild: bool,
 ) -> (PathTrace, Node) {
     while nodes.len() > 1 {
         //  reduce allocations as length of nodes to process halves at every level up.
-        let mut next_level = Vec::with_capacity(nodes.len() / 2);
+        let next_level = SegQueue::new();
         let mut cursor = nodes.into_iter();
         while let Some((left, node)) = cursor.next() {
             let (right, right_node) = cursor.next().unwrap_or((left, node));
@@ -90,24 +86,29 @@ fn build_sequential<S: NodeStore + Send>(
 
 /// build the tree in parallel using divide and conquer
 fn build_parallel(
-    nodes: &[(PathTrace, Node)],
+    nodes: SegQueue<(PathTrace, Node)>,
     output_buffer: &SegQueue<(PathTrace, Node)>,
     lowest_level: isize,
     is_rebuild: bool,
 ) -> (PathTrace, Node) {
     if nodes.len() == 1 {
-        if let Some(last) = nodes.last() {
+        if let Some(last) = nodes.pop() {
             output_buffer.push((last.0, last.1));
-            return *last;
+            return last;
         }
     }
 
     let mid = nodes.len() / 2;
-    let (left_slice, right_slice) = nodes.split_at(mid);
+    let left_slice = SegQueue::new();
+    for _ in 0..mid {
+        if let Some(value) = nodes.pop() {
+            left_slice.push(value);
+        }
+    }
 
     let (left_result, right_result) = rayon::join(
         || build_parallel(left_slice, output_buffer, lowest_level, is_rebuild),
-        || build_parallel(right_slice, output_buffer, lowest_level, is_rebuild),
+        || build_parallel(nodes, output_buffer, lowest_level, is_rebuild),
     );
 
     let (left_path, left_node) = left_result;
