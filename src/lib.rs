@@ -95,10 +95,10 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         let level_count = get_level_count(leaf_count);
         let mut tree_cache = store;
         let lowest_level = 0;
-        let (_root_path, root) =
+        let (_root_path, root, count) =
             build_tree(&mut tree_cache, input, level_count, lowest_level, false, 0);
 
-        let unique_leaf_count = tree_cache.unique_leaf_count();
+        let unique_leaf_count = count;
         let padding_start = unique_leaf_count.saturating_sub(1);
 
         tree_cache.sort();
@@ -175,7 +175,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
         // shift_root_to_left
         self.tree_cache.shift_root_to_left(self.lowest_level);
         self.tree_cache.reserve(total_tree_nodes);
-        let (_last, last_node) = build_tree(
+        let (_last, last_node, _) = build_tree(
             &mut self.tree_cache,
             input,
             self.level_count,
