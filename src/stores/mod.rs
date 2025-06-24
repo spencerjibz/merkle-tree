@@ -1,12 +1,18 @@
 use crate::HashDirection;
+#[cfg(feature = "fjall")]
 mod fjall_storage;
+#[cfg(feature = "rocksdb")]
 mod rocksdb_storage;
+#[cfg(feature = "sled")]
 mod sled_storage;
 use super::{Hash, Node, PathTrace};
+#[cfg(feature = "fjall")]
 pub use fjall_storage::*;
 use indexmap::IndexMap;
 use itertools::Itertools;
+#[cfg(feature = "rocksdb")]
 pub use rocksdb_storage::*;
+#[cfg(feature = "sled")]
 pub use sled_storage::*;
 #[derive(Debug, Clone, Copy)]
 pub enum StoreType {
@@ -48,8 +54,8 @@ pub trait NodeStore {
     }
 }
 
-// Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
-// Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
+/// Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
+/// Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
 pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
 
 impl NodeStore for TreeCache {

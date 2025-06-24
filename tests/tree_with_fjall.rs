@@ -1,3 +1,4 @@
+#[cfg(feature = "fjall")]
 #[cfg(test)]
 mod tree_with_fjall {
     use fjall::Keyspace;

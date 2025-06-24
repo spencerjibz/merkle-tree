@@ -1,3 +1,4 @@
+#[cfg(feature = "rocksdb")]
 #[cfg(test)]
 mod tree_with_rocksdb {
     use merkle_tree::{
