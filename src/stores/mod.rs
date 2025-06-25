@@ -53,6 +53,9 @@ pub trait NodeStore {
             .count()
     }
 }
+pub fn create_bytes_stream(size: usize) -> impl Iterator<Item = [u8; 8]> {
+    (0..size).map(|num| num.to_be_bytes())
+}
 
 /// Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
 /// Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
