@@ -86,7 +86,7 @@ impl NodeStore for TreeCache {
     }
     fn sort(&mut self) {
         self.sort_unstable_by(|path, node1, path2, node2| {
-            node1.data.cmp(&node2.data).then_with(|| path.cmp(path2))
+            node1.data.cmp(&node2.data).then_with(|| path2.cmp(path))
         });
     }
     fn entries(&self) -> impl Iterator<Item = (PathTrace, Node)> {

@@ -19,7 +19,7 @@ fn append_multiple_to_un_balanced_tree() {
     let store = IndexMap::new();
     let data = create_bytes_stream(index);
     let mut tree = MerkleTree::from_iter(data, index, store);
-    let input: Vec<_> = (80..=85).map(|d| vec![d]).collect();
+    let input: Vec<_> = (80..=87).map(|d| vec![d]).collect();
     for (i, h) in input.iter().enumerate() {
         tree.append(h);
         tree.pretty_print();
