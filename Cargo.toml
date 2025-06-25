@@ -23,7 +23,7 @@ rayon = "1.10.0"
 rocksdb = { version = "0.23.0", default-features = false, features = [
   "snappy",
 ], optional = true }
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"], optional = true }
 sha2 = "0.10.1"
 sled = { version = "0.34.7", default-features = false, optional = true }
 tempfile = { version = "3.20.0", optional = true }
@@ -39,14 +39,15 @@ ring = "0.16.15"
 [[bench]]
 name = 'stores'
 harness = false
-required-features = ["full"]
+required-features = ["all-stores"]
 [[bench]]
 name = 'generic'
 harness = false
 [features]
-default = ["sled"]
+default = []
+
 all-stores = ["sled", "rocksdb", "fjall"]
 dhat-heap = ["dep:dhat"]
-sled = ["dep:bincode", "dep:sled", "dep:tempfile"]
-rocksdb = ["dep:bincode", "dep:rocksdb", "dep:tempfile"]
-fjall = ["dep:bincode", "dep:fjall", "dep:tempfile"]
+sled = ["dep:bincode", "dep:sled", "dep:tempfile", "dep:serde"]
+rocksdb = ["dep:bincode", "dep:rocksdb", "dep:tempfile", "dep:serde"]
+fjall = ["dep:bincode", "dep:fjall", "dep:tempfile", "dep:serde"]

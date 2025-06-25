@@ -1,4 +1,8 @@
-use merkle_tree::{hash_data, stores::create_large_input_byes_sled, MerkleTree};
+use merkle_tree::{
+    hash_data,
+    stores::{create_bytes_stream, TreeCache},
+    MerkleTree,
+};
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -10,19 +14,11 @@ fn main() {
     println!("{:?}", now.elapsed());
 }
 fn append_multiple_to_un_balanced_tree() {
-    use merkle_tree::stores::SledStore;
-    use sled::{Config, Mode};
-    let config = Config::default().temporary(true).mode(Mode::HighThroughput);
     let index = 3;
-    let db = config.open().unwrap();
-    let store = SledStore::new(&db, "test_db").unwrap();
-    /*  uncomment to use index map
     use indexmap::IndexMap;
-    *
     let store = IndexMap::new();
-    *  */
-    let (size, data) = create_large_input_byes_sled(index, &db);
-    let mut tree = MerkleTree::from_iter(data, size, store);
+    let data = create_bytes_stream(index);
+    let mut tree = MerkleTree::from_iter(data, index, store);
     let input: Vec<_> = (80..=85).map(|d| vec![d]).collect();
     for (i, h) in input.iter().enumerate() {
         tree.append(h);
@@ -33,7 +29,7 @@ fn append_multiple_to_un_balanced_tree() {
         tree.print_data_route(h);
         let root_hash = tree.root();
         if let Some(proof) = tree.prove(h) {
-            assert!(MerkleTree::<SledStore>::verify_proof(h, &proof, root_hash))
+            assert!(MerkleTree::<TreeCache>::verify_proof(h, &proof, root_hash))
         }
     }
     tree.pretty_print();

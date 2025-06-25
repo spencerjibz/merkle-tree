@@ -1,5 +1,11 @@
 pub use crate::stores::NodeStore;
 use itertools::{peek_nth, Itertools};
+#[cfg(any(
+    feature = "sled",
+    feature = "all-stores",
+    feature = "rocksdb",
+    feature = "fjall"
+))]
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 mod tree_construction;
@@ -7,20 +13,17 @@ pub use tree_construction::*;
 pub type Data = Vec<u8>;
 pub type Hash = [u8; 32];
 /// Which side to put Hash on when concatinating proof hashes
-#[repr(u8)]
-#[derive(
-    Debug,
-    Clone,
-    Default,
-    Copy,
-    PartialOrd,
-    Ord,
-    PartialEq,
-    Eq,
-    std::hash::Hash,
-    Serialize,
-    Deserialize,
+#[cfg_attr(
+    any(
+        feature = "sled",
+        feature = "rocksdb",
+        feature = "all-stores",
+        feature = "fjall"
+    ),
+    derive(Serialize, Deserialize)
 )]
+#[repr(u8)]
+#[derive(Debug, Clone, Default, Copy, PartialOrd, Ord, PartialEq, Eq, std::hash::Hash)]
 pub enum HashDirection {
     Left = 0,
     Right = 1,
@@ -51,7 +54,16 @@ impl HashDirection {
 }
 
 // Our nodes
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
+#[cfg_attr(
+    any(
+        feature = "sled",
+        feature = "rocksdb",
+        feature = "all-stores",
+        feature = "fjall"
+    ),
+    derive(Serialize, Deserialize)
+)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Node {
     pub is_leaf: bool,
     pub data: Hash,
@@ -83,7 +95,16 @@ impl Proof {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, std::hash::Hash, Serialize, Deserialize)]
+#[cfg_attr(
+    any(
+        feature = "sled",
+        feature = "rocksdb",
+        feature = "all-stores",
+        feature = "fjall"
+    ),
+    derive(Serialize, Deserialize)
+)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, std::hash::Hash)]
 pub struct PathTrace {
     pub level: isize,
     pub direction: HashDirection,

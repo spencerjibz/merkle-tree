@@ -56,10 +56,10 @@ pub trait NodeStore {
 pub fn create_bytes_stream(size: usize) -> impl Iterator<Item = [u8; 8]> {
     (0..size).map(|num| num.to_be_bytes())
 }
-
+/// IndexMap as tree_cache, its offers 0(log n) lookup by hash if tree is orted by hash
 /// Our tree is built bottom up, we use indexes at each level to identify the nodes, and use the index to calculate the parent node
 /// Our level index ordering is reversed for ease of use and lookup, so our root is at level 0, and the leaves are at the highest level
-pub(crate) type TreeCache = IndexMap<PathTrace, Node>;
+pub type TreeCache = IndexMap<PathTrace, Node>;
 
 impl NodeStore for TreeCache {
     fn trigger_batch_actions(&mut self) {
