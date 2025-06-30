@@ -16,9 +16,29 @@ fn main() {
 fn append_multiple_to_un_balanced_tree() {
     let index = 3;
     use indexmap::IndexMap;
-    let store = IndexMap::new();
+    let _store: TreeCache = IndexMap::with_capacity(2 * index - 1);
+    #[cfg(feature = "sled")]
+    use merkle_tree::stores::{temporary_sled_db, SledStore};
+    #[cfg(feature = "sled")]
+    let db = temporary_sled_db();
+    #[cfg(feature = "sled")]
+    let _store = SledStore::new(&db, "test_db").expect("failed to create store");
+    //
+    #[cfg(feature = "rocksdb")]
+    use merkle_tree::stores::{temporary_rocks_db, RocksDbStore};
+    #[cfg(feature = "rocksdb")]
+    let db = temporary_rocks_db();
+    #[cfg(feature = "rocksdb")]
+    let _store = RocksDbStore::new(&db, "test_db").expect("failed to create store");
+
+    #[cfg(feature = "fjall")]
+    use merkle_tree::stores::{temporary_fjall_db, FjallDbStore};
+    #[cfg(feature = "fjall")]
+    let db = temporary_fjall_db();
+    #[cfg(feature = "fjall")]
+    let _store = FjallDbStore::new(&db, "test_db").expect("failed to create store");
     let data = create_bytes_stream(index);
-    let mut tree = MerkleTree::from_iter(data, index, store);
+    let mut tree = MerkleTree::from_iter(data, index, _store);
     let input: Vec<_> = (80..=87).map(|d| vec![d]).collect();
     for (i, h) in input.iter().enumerate() {
         tree.append(h);

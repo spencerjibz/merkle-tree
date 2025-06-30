@@ -46,7 +46,7 @@ impl NodeStore for RocksDbStore<'_> {
         node_store_batch.put_cf(&self.cf_node_store, &path, node);
         // skip updating this for duplicates
         if !self.db.key_may_exist_cf(&self.cf_hash_key_store, &hash) {
-            hash_key_tree_batch.put_cf(&self.cf_hash_key_store, hash, path);
+            let _ = self.db.put_cf(&self.cf_hash_key_store, hash, path);
         }
         Some(value)
     }
@@ -60,8 +60,7 @@ impl NodeStore for RocksDbStore<'_> {
     }
 
     fn get_key_by_hash(&self, hash: &crate::Hash) -> Option<PathTrace> {
-        let key: Vec<u8> = bincode::serialize(&hash).ok()?;
-        if let Some(path_bytes) = self.db.get_cf(&self.cf_hash_key_store, key).ok()? {
+        if let Some(path_bytes) = self.db.get_cf(&self.cf_hash_key_store, hash).ok()? {
             return bincode::deserialize(&path_bytes).ok();
         }
 

@@ -1,7 +1,7 @@
 use super::NodeStore;
 use crate::Node;
 use crate::PathTrace;
-use sled::{Batch, Db, Result};
+use sled::{Batch, Config, Db, Mode, Result};
 use sled::{IVec, Tree};
 #[derive(Clone, Debug)]
 pub struct SledStore {
@@ -41,10 +41,10 @@ impl NodeStore for SledStore {
         let path: IVec = bincode::serialize(&key).ok()?.into();
         let node: IVec = bincode::serialize(&value).ok()?.into();
         let hash = value.data;
-        self.node_store_batch.insert(path.clone(), node);
+        let _ = self.node_store.insert(&path, node);
         // skip updating this for duplicates
         if !self.hash_key_tree.contains_key(hash).unwrap_or_default() {
-            self.hash_key_tree_batch.insert(&hash, path);
+            let _ = self.hash_key_tree.insert(hash, path);
         }
         Some(value)
     }
@@ -55,8 +55,7 @@ impl NodeStore for SledStore {
     }
 
     fn get_key_by_hash(&self, hash: &crate::Hash) -> Option<crate::PathTrace> {
-        let key: Vec<_> = bincode::serialize(&hash).ok()?;
-        if let Some(path_bytes) = self.hash_key_tree.get(key).ok()? {
+        if let Some(path_bytes) = self.hash_key_tree.get(hash).ok()? {
             return bincode::deserialize(&path_bytes).ok();
         }
 
@@ -134,4 +133,8 @@ pub fn create_large_input_byes_sled(size: usize, db: &Db) -> (usize, impl Iterat
     }
     let _ = tree.apply_batch(batch);
     (size, tree.iter().values().flat_map(|v| v.ok()))
+}
+pub fn temporary_sled_db() -> Db {
+    let config = Config::default().temporary(true).mode(Mode::HighThroughput);
+    config.open().expect("failed to load temporary sled-db")
 }

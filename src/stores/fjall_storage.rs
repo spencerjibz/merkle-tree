@@ -44,10 +44,7 @@ impl NodeStore for FjallDbStore<'_> {
             .insert(&self.node_store, &path, node);
         // skip updating this for duplicates
         if !self.hash_key_tree.contains_key(hash).unwrap_or_default() {
-            self.hash_key_tree_batch
-                .lock()
-                .unwrap()
-                .insert(&self.hash_key_tree, hash, path);
+            let _ = self.hash_key_tree.insert(hash, path);
         }
         Some(value)
     }
