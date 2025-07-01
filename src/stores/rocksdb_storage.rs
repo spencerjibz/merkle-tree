@@ -42,7 +42,6 @@ impl NodeStore for RocksDbStore<'_> {
         let node: Vec<u8> = bincode::serialize(&value).ok()?;
         let hash: Vec<u8> = bincode::serialize(&value.data).ok()?;
         let mut node_store_batch = self.node_store_batch.lock().unwrap();
-        let mut hash_key_tree_batch = self.hash_key_tree_batch.lock().unwrap();
         node_store_batch.put_cf(&self.cf_node_store, &path, node);
         // skip updating this for duplicates
         if !self.db.key_may_exist_cf(&self.cf_hash_key_store, &hash) {
