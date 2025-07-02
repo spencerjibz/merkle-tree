@@ -135,7 +135,7 @@ jobs:
       - name: Clean previous build artifacts (removed `cargo clean`)
         run: ls -lah # Changed from `cargo clean` to just `ls -lah` for debugging
 
-      - run: cargo nextest run --release --all-features
+      - run: cargo nextest run --release --features all-stores
 
   rust-clippy-analyze:
     runs-on: ubuntu-latest
