@@ -1,5 +1,5 @@
 use merkle_tree::{
-    hash_data,
+    hashers::{GlobalHasher, Hasher},
     stores::{create_bytes_stream, TreeCache},
     MerkleTree,
 };
@@ -43,7 +43,7 @@ fn append_multiple_to_un_balanced_tree() {
     for (i, h) in input.iter().enumerate() {
         tree.append(h);
         tree.pretty_print();
-        let selected = hex::encode(hash_data(h));
+        let selected = hex::encode(GlobalHasher::hash_data(h));
         let header_bars = "-".repeat(selected.len() / 4);
         println!("{} Path to h{i} {} {}", header_bars, &selected, header_bars);
         tree.print_data_route(h);
