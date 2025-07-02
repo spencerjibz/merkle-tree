@@ -17,6 +17,7 @@ A minimal and extensible Merkle Tree implementation in Rust.
 - RocksDB integration
 - Fjall integration
 - Support for incremental updates and appending to the tree;
+- Different hashing libraries (sha1, sha2,sha3 and blake3) under corresponding feature flags with sha2 as default.
 
 ### Getting Started
 
@@ -48,7 +49,7 @@ Tests cover core functionality including tree construction, root computation, pr
 
 [Here](https://spencerjibz.github.io/merkle-tree) are basic benchmarks for construction, proof_generation and verification between our implementation & [merkle.rs](https://github.com/SpinResearch/merkle.rs) and benchmarks between stores (RocksDb, Sled, IndexMap and Fjall).
 
-run ` cargo bench` to run the benchmarks locally.
+run ` cargo bench --features all-stores` to run the benchmarks locally.
 
 ### License
 
