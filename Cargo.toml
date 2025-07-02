@@ -51,6 +51,7 @@ default = ["sha2"]
 sha2 = ["dep:sha2"]
 sha1 = ["dep:sha1"]
 sha3 = ["dep:sha3"]
+blake3 = ["dep:blake3"]
 
 all-stores = ["sled", "rocksdb", "fjall"]
 dhat-heap = ["dep:dhat"]
