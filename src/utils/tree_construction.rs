@@ -1,4 +1,5 @@
-use super::{hash_concat, HashDirection, Node, NodeStore, PathTrace};
+use super::{HashDirection, Node, NodeStore, PathTrace};
+use crate::hashers::{GlobalHasher, Hasher};
 use crossbeam_queue::SegQueue;
 pub fn build_tree<S: NodeStore + Send>(
     tree_cache: &mut S,
@@ -68,7 +69,7 @@ fn build_sequential<S: NodeStore + Send>(
             }
 
             let parent_node = Node {
-                data: hash_concat(&node.data, &right_node.data),
+                data: GlobalHasher::hash_concat(&node.data, &right_node.data),
                 is_leaf: false,
                 from_duplicate: node.from_duplicate,
             };
@@ -114,7 +115,7 @@ fn build_parallel(
     let (left_path, left_node) = left_result;
     let (_right_path, right_node) = right_result;
 
-    let parent_hash = hash_concat(&left_node.data, &right_node.data);
+    let parent_hash = GlobalHasher::hash_concat(&left_node.data, &right_node.data);
     let parent_level_in_tree = left_path.level - 1;
     let mut parent_index = left_path.index / 2;
 

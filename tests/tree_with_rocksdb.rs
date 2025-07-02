@@ -2,13 +2,15 @@
 #[cfg(test)]
 mod tree_with_rocksdb {
     use merkle_tree::{
-        example_data, hash_data,
+        example_data,
+        hashers::{GlobalHasher, Hasher},
         stores::{temporary_rocks_db, NodeStore, RocksDb, RocksDbStore},
         HashDirection, MerkleTree, PathTrace,
     };
     use std::sync::LazyLock;
     static ROCKS_DB: LazyLock<RocksDb> = LazyLock::new(temporary_rocks_db);
     #[test]
+    #[cfg(feature = "sha2")]
     fn test_constructions() {
         let data = example_data(4);
         let store = RocksDbStore::new(LazyLock::force(&ROCKS_DB), "constructions").unwrap();
@@ -137,6 +139,7 @@ mod tree_with_rocksdb {
         });
     }
     #[test]
+    #[cfg(feature = "sha2")]
     fn verifies_data_set_forms_root() {
         let pairs = [
             (
@@ -172,14 +175,17 @@ mod tree_with_rocksdb {
         // update the first node at index 0, left to a 5;
         let update = vec![5];
         tree.pretty_print();
-        tree.update(&hash_data(&vec![0]), hash_data(&update));
+        tree.update(
+            &GlobalHasher::hash_data(&vec![0]),
+            GlobalHasher::hash_data(&update),
+        );
         tree.pretty_print();
         assert_eq!(
             tree.tree_cache
                 .get(&PathTrace::new(HashDirection::Left, 2, 0))
                 .unwrap()
                 .data,
-            hash_data(&update)
+            GlobalHasher::hash_data(&update)
         );
         // generate prove for update data used;
         let root_hash = tree.root();

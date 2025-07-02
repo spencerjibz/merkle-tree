@@ -7,8 +7,8 @@ use itertools::{peek_nth, Itertools};
     feature = "fjall"
 ))]
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 mod tree_construction;
+use crate::hashers::{GlobalHasher, Hasher};
 pub use tree_construction::*;
 pub type Data = Vec<u8>;
 pub type Hash = [u8; 32];
@@ -71,7 +71,7 @@ pub struct Node {
 }
 impl Node {
     pub fn new<I: AsRef<[u8]>>(data: I, is_leaf: bool) -> Self {
-        let data = hash_data(&data);
+        let data = GlobalHasher::hash_data(&data);
         Self {
             is_leaf,
             data,
@@ -174,15 +174,6 @@ impl PartialOrd for PathTrace {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
-}
-// ------------------------- UTILITY FUNCTIONS --------------------------------------------------
-pub fn hash_data<T: AsRef<[u8]>>(data: &T) -> Hash {
-    let hash = sha2::Sha256::digest(data.as_ref());
-    hash.into()
-}
-
-pub fn hash_concat<T: AsRef<[u8]>>(h1: &T, h2: &T) -> Hash {
-    hash_data(&[h1.as_ref(), h2.as_ref()].concat())
 }
 pub fn get_level_count(leaf_count: usize) -> isize {
     if leaf_count == 0 {

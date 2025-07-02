@@ -50,8 +50,11 @@ Exercise 3 (Hard):
                 H3|H4 => H6 => H5|H6 => H7 = root
 
  */
+
+pub mod hashers;
 pub mod stores;
 pub mod utils;
+use hashers::{GlobalHasher, Hasher};
 use std::collections::BTreeMap;
 pub use stores::NodeStore;
 pub use utils::*;
@@ -134,9 +137,9 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             ) {
                 // check for direction
                 let next_parent_hash = if path.direction == HashDirection::Left {
-                    hash_concat(&current_node.data, &sibling_node.data)
+                    GlobalHasher::hash_concat(&current_node.data, &sibling_node.data)
                 } else {
-                    hash_concat(&sibling_node.data, &current_node.data)
+                    GlobalHasher::hash_concat(&sibling_node.data, &current_node.data)
                 };
                 path.get_parent_path(self.lowest_level)
                     .and_then(|parent_path| {
@@ -183,7 +186,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
             true,
             self.leaf_count,
         );
-        let next_root = hash_concat(self.root(), &last_node.data);
+        let next_root = GlobalHasher::hash_concat(self.root(), &last_node.data);
         self.root = next_root;
         self.leaf_count += next_needed_nodes;
         let root = Node {
@@ -202,7 +205,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
     pub fn expand_padded<D: AsRef<[u8]>>(&mut self, data: &D) {
         let padding_start = self.padding_start;
         // replace the first padded copy with unique pair;
-        let hashed_data = hash_data(&data);
+        let hashed_data = GlobalHasher::hash_data(&data);
         let mut first_padded = PathTrace::new(
             HashDirection::from_index(padding_start),
             self.level_count,
@@ -300,11 +303,11 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
 
     pub fn find_data_route<D: AsRef<[u8]>>(&self, data: &D) -> Vec<PathTrace> {
         // faster path, fetch the path from leaf_set;
-        let target_hash = hash_data(data);
+        let target_hash = GlobalHasher::hash_data(data);
         if let Some(trace) = self.tree_cache.get_key_by_hash(&target_hash) {
             return trace.generate_route(self.lowest_level).collect();
         }
-        let target_hash = hash_data(data);
+        let target_hash = GlobalHasher::hash_data(data);
         if let Some(cached_path) = self.fetch_cache_pathtrace(&target_hash) {
             return cached_path.generate_route(self.lowest_level).collect();
         }
@@ -329,7 +332,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
 
     /// Verifies that the given data and proof_path correctly produce the given root_hash
     pub fn verify_proof<D: AsRef<[u8]>>(data: &D, proof: &Proof, root_hash: &Hash) -> bool {
-        let hashed_data = hash_data(data);
+        let hashed_data = GlobalHasher::hash_data(data);
         let generated =
             proof
                 .hashes
@@ -337,9 +340,9 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
                 .fold(hashed_data, |acc, &(_, direction, ref next_hash)| {
                     let is_leaf = direction == HashDirection::Left;
                     if is_leaf {
-                        return hash_concat(next_hash, &acc);
+                        return GlobalHasher::hash_concat(next_hash, &acc);
                     }
-                    hash_concat(&acc, next_hash)
+                    GlobalHasher::hash_concat(&acc, next_hash)
                 });
         &generated == root_hash
     }
@@ -348,7 +351,7 @@ impl<Store: NodeStore + Send> MerkleTree<Store> {
     pub fn prove<D: AsRef<[u8]>>(&self, data: &D) -> Option<Proof> {
         // we use our tree_cache and some math to calculate the sibling_node at each parent level
         // See PathTrace for math
-        let target_hash = hash_data(&data);
+        let target_hash = GlobalHasher::hash_data(&data);
         if let Some(trace) = self.fetch_cache_pathtrace(&target_hash) {
             let hashes: Vec<_> = trace
                 .generate_route(self.lowest_level)
