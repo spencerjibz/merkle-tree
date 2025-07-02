@@ -9,7 +9,4 @@ impl Hasher for Sha2Hasher {
         let hash = sha2::Sha256::digest(data.as_ref());
         hash.into()
     }
-    fn hash_concat<T: AsRef<[u8]>>(h1: &T, h2: &T) -> Hash {
-        Self::hash_data(&[h1.as_ref(), h2.as_ref()].concat())
-    }
 }
